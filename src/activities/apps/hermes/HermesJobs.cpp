@@ -15,6 +15,12 @@
 #if HERMES_HAS_MIC
 #include <Buzzer.h>
 #include <Microphone.h>
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#include <BoardConfig.h>  // BoardConfig::ACTIVE.mic — the mic pins to release
+// Direct PAD control for the USB-Serial-JTAG release in recordTask() below.
+#include <driver/gpio.h>
+#include <soc/usb_serial_jtag_struct.h>
+#endif
 #endif
 
 namespace hermes {
@@ -160,6 +166,21 @@ void netTask(void* param) {
 void recordTask(void* param) {
   auto* job = static_cast<RecordJob*>(param);
   activeRecorders.fetch_add(1);
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  // On the ESP32-S3 the PDM mic CLK/DATA pads are the *same physical pads* as
+  // USB-Serial-JTAG, and that peripheral is routed to the pad directly, not through
+  // the GPIO matrix. While the USB PHY holds them, the PDM RX channel reads a full
+  // block of zeros -- a well-formed WAV of pure silence that transcribes to "" and
+  // surfaces as "didn't catch that". Disabling the pad hands the pins back to I2S.
+  // Board-safe: on the Sticky, flashing and serial both use the CH343P bridge on
+  // UART0, so the native USB-JTAG is unused.
+  const BoardConfig::MicConfig& micCfg = BoardConfig::ACTIVE.mic;
+  if (micCfg.input == BoardConfig::MicInput::Pdm) {
+    USB_SERIAL_JTAG.conf0.usb_pad_enable = 0;
+    if (micCfg.clk != BoardConfig::PIN_UNASSIGNED) gpio_reset_pin(static_cast<gpio_num_t>(micCfg.clk));
+    if (micCfg.data != BoardConfig::PIN_UNASSIGNED) gpio_reset_pin(static_cast<gpio_num_t>(micCfg.data));
+  }
+#endif
   freeink::Microphone mic;
   if (!mic.begin(job->sampleRate)) {
     job->error = JobError::MicUnavailable;
