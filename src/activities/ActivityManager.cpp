@@ -34,6 +34,8 @@
 #include "apps/sudoku/SudokuMenuActivity.h"
 #include "apps/woodfish/WoodfishActivity.h"
 #include "apps/hermes/HermesChatActivity.h"
+#include "apps/s3xy/S3xyActivity.h"
+#include "lock/LockScreenActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -127,9 +129,27 @@ void ActivityManager::loop() {
     return;
   }
 
-  if (currentActivity && pendingAction.load() == PendingAction::None) {
+  // A lock requested by the AI-button click or at boot takes effect before any
+  // input is handled, so nothing underneath sees the frame that locked it.
+  if (lockRequested_ && currentActivity && pendingAction.load() == PendingAction::None) {
+    lockRequested_ = false;
+    if (!isLocked()) {
+      auto lock = makeUniqueNoThrow<LockScreenActivity>(renderer, mappedInput);
+      if (lock) {
+        pushActivity(std::move(lock));
+      } else {
+        LOG_ERR("ACT", "OOM: lock screen (%u bytes)", static_cast<unsigned>(sizeof(LockScreenActivity)));
+      }
+    }
+  }
+
+  if (currentActivity && pendingAction.load() == PendingAction::None && currentActivity->blocksGlobalShortcuts()) {
+    // Locked: only the lock screen's own input runs (no tabs, home swipe, panels).
+    currentActivity->loop();
+  } else if (currentActivity && pendingAction.load() == PendingAction::None) {
     if (handleMainTabInput()) return;
-    if (!currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
+    const bool atHome = currentActivity->isHomeActivity() || currentActivity->mainTab() == homeMainTab();
+    if (!atHome && mappedInput.wasHomeGesture()) {
       if (currentActivity->handleHomeGesture()) {
         return;
       }
@@ -242,6 +262,14 @@ void ActivityManager::loop() {
       lock.unlock();  // onEnter may acquire its own lock
       currentActivity->onEnter();
 
+      // A lock requested while this switch was pending goes on top before the
+      // new screen is ever painted.
+      if (lockRequested_ && pendingAction.load() == PendingAction::None && !isLocked()) {
+        lockRequested_ = false;
+        auto lockScreen = makeUniqueNoThrow<LockScreenActivity>(renderer, mappedInput);
+        if (lockScreen) pushActivity(std::move(lockScreen));
+      }
+
       // onEnter may request another pending action, we will handle it in the next loop iteration
       continue;
     }
@@ -336,7 +364,7 @@ bool ActivityManager::handleMainTabInput() {
       }
 
       if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-        const MainTab target = MainTabs::backTarget(currentTab);
+        const MainTab target = currentTab == homeMainTab() ? MainTab::None : homeMainTab();
         if (target != MainTab::None)
           goToMainTab(target);
         else if (SETTINGS.standbyShortcutEnabled)
@@ -403,6 +431,10 @@ void ActivityManager::goToFileBrowser(std::string path) { replaceActivityWith<Fi
 void ActivityManager::goToRecentBooks() { replaceActivityWith<RecentBooksActivity>(); }
 
 void ActivityManager::goToInxRecent() { replaceActivityWith<InxRecentActivity>(); }
+
+MainTab ActivityManager::homeMainTab() const {
+  return SETTINGS.homeScreen == CrossPointSettings::HOME_APPS ? MainTab::Apps : MainTab::Recent;
+}
 
 void ActivityManager::goToMainTab(const MainTab tab) {
   mainTabEntryReleasePending = false;
@@ -473,7 +505,7 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
   if (SETTINGS.uiTheme == CrossPointSettings::UI_THEME::INX) {
     mainTabFocus = MainTabFocus::Tabs;
     mainTabEntryReleasePending = false;
-    goToInxRecent();
+    goToMainTab(homeMainTab());
     return;
   }
   if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
@@ -515,6 +547,31 @@ void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>
 void ActivityManager::goToWoodfish() { replaceActivityWith<WoodfishActivity>(); }
 
 void ActivityManager::goToHermes() { replaceActivityWith<HermesChatActivity>(); }
+
+void ActivityManager::goToS3xy() { replaceActivityWith<S3xyActivity>(); }
+
+void ActivityManager::requestLock() { lockRequested_ = true; }
+
+bool ActivityManager::isLocked() const { return currentActivity && currentActivity->blocksGlobalShortcuts(); }
+
+void ActivityManager::goToHermesPushToTalk() {
+  if (pendingAction.load() != PendingAction::None || isLocked()) return;
+  if (currentActivity && currentActivity->name == S3xyActivity::kName) return;  // keep the car link radio-only
+  if (currentActivity && currentActivity->name == HermesChatActivity::kName) {
+    static_cast<HermesChatActivity*>(currentActivity.get())->beginPushToTalk();
+    return;
+  }
+  // A child of an open chat (keyboard, Setup, Wi-Fi) is on top: don't nest a second chat.
+  for (const auto& activity : stackActivities) {
+    if (activity->name == HermesChatActivity::kName) return;
+  }
+  auto chat = makeUniqueNoThrow<HermesChatActivity>(renderer, mappedInput, HermesChatActivity::Launch::PushToTalk);
+  if (!chat) {
+    LOG_ERR("ACT", "OOM: HermesChatActivity (%u bytes)", static_cast<unsigned>(sizeof(HermesChatActivity)));
+    return;
+  }
+  pushActivity(std::move(chat));
+}
 
 void ActivityManager::goToGame2048() { replaceActivityWith<Game2048Activity>(); }
 

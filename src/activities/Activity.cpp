@@ -20,7 +20,7 @@ MappedInputManager::Labels Activity::mainTabButtonLabels(const char* back, const
 
   if (activityManager.getMainTabFocus() == MainTabFocus::Tabs) {
     const char* tabBack =
-        mainTab() == MainTab::Recent ? (SETTINGS.standbyShortcutEnabled ? tr(STR_STANDBY_TITLE) : "") : tr(STR_BACK);
+        mainTab() == activityManager.homeMainTab() ? (SETTINGS.standbyShortcutEnabled ? tr(STR_STANDBY_TITLE) : "") : tr(STR_BACK);
     return mappedInput.mapLabels(tabBack, tr(STR_SELECT), showTabDirections ? tr(STR_DIR_LEFT) : "",
                                  showTabDirections ? tr(STR_DIR_RIGHT) : "");
   }

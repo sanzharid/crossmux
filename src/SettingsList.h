@@ -364,6 +364,19 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
             {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES},
             "shortPwrBtn", StrId::STR_CAT_CONTROLS),
 #endif
+        SettingInfo::Enum(StrId::STR_HOME_SCREEN, &CrossPointSettings::homeScreen,
+                          {StrId::STR_HOME_RECENT, StrId::STR_HOME_APPS}, "homeScreen", StrId::STR_CAT_CONTROLS),
+#if FREEINK_DEVICE_STICKY
+        SettingInfo::Enum(StrId::STR_AI_BUTTON_CLICK, &CrossPointSettings::aiButtonClick,
+                          {StrId::STR_CONFIRM, StrId::STR_LOCK_SCREEN, StrId::STR_SLEEP}, "aiButtonClick",
+                          StrId::STR_CAT_CONTROLS),
+#endif
+        SettingInfo::Toggle(StrId::STR_LOCK_ON_WAKE, &CrossPointSettings::lockOnWake, "lockOnWake",
+                            StrId::STR_CAT_CONTROLS),
+#if HERMES_HAS_MIC
+        SettingInfo::Enum(StrId::STR_AI_BUTTON_HOLD, &CrossPointSettings::aiButtonHold,
+                          {StrId::STR_SLEEP, StrId::STR_HERMES_TALK_TO_HERMES}, "aiButtonHold", StrId::STR_CAT_CONTROLS),
+#endif
         SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,

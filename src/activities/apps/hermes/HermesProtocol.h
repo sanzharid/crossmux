@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace hermes {
 
@@ -37,6 +38,15 @@ void writeWavHeader(uint8_t* out, uint32_t pcmBytes, uint32_t sampleRate);
 // multipart/form-data framing around a single "file" part holding a WAV.
 std::string multipartHead(const char* boundary, const std::string& model, const std::string& language);
 std::string multipartTail(const char* boundary);
+
+// http(s) links in a reply whose path ends in a book extension the reader
+// opens (.epub .txt .md .xtc .xtch), in order, de-duplicated, at most maxLinks.
+// Run on the raw reply: plainText() drops Markdown link targets.
+std::vector<std::string> findBookLinks(const std::string& text, size_t maxLinks = 3);
+
+// SD-safe file name for a book URL: last path segment, percent-decoded, with
+// unsafe characters replaced and length capped; keeps the extension.
+std::string bookFileName(const std::string& url);
 
 // Flattens common Markdown (headings, emphasis, code fences, bullets, links)
 // into plain text that reads well on e-paper.

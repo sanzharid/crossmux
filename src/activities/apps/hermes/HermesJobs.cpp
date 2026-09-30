@@ -1,7 +1,10 @@
 #include "HermesJobs.h"
 
+#include "network/HttpDownloader.h"
+
 #include <Arduino.h>
 #include <Logging.h>
+#include <HalStorage.h>
 #include <SecureHttpClient.h>
 
 #include <algorithm>
@@ -10,6 +13,7 @@
 #include <new>
 
 #if HERMES_HAS_MIC
+#include <Buzzer.h>
 #include <Microphone.h>
 #endif
 
@@ -19,11 +23,17 @@ namespace {
 
 // TLS (https endpoints) runs wolfSSL on this stack; plain LAN http needs far less.
 constexpr uint32_t kNetTaskStackBytes = 12 * 1024;
+// HttpDownloader keeps its TLS client and a 1 KB copy buffer on the stack.
+constexpr uint32_t kDownloadTaskStackBytes = 16 * 1024;
 constexpr uint32_t kRecordTaskStackBytes = 4 * 1024;
 constexpr char kBoundary[] = "----CrossMuxHermesBoundary7f3a";
 constexpr size_t kMaxReplyBytes = 256 * 1024;
 
 std::atomic<uint8_t> activeRecorders{0};
+
+constexpr uint32_t kStartBeepHz = 2000;
+constexpr uint32_t kStopBeepHz = 1200;
+constexpr uint32_t kBeepMs = 70;
 
 template <typename Job>
 void releaseJob(Job* job) {
@@ -95,9 +105,33 @@ void runTranscribe(NetJob& job, freeink::SecureHttpClient& http) {
   classify(job, status, parsed);
 }
 
+// Streams a book to destPath.part, then renames it into place so a half
+// download never shows up in the library.
+void runDownload(NetJob& job) {
+  const std::string part = job.destPath + ".part";
+  const auto result = HttpDownloader::downloadToFile(job.url, part, nullptr, &job.downloadCancel);
+  if (result == HttpDownloader::OK) {
+    // Never replace an existing book: if the name got taken meanwhile, the
+    // rename fails and the download is reported as a file error.
+    if (!Storage.exists(job.destPath.c_str()) && Storage.rename(part.c_str(), job.destPath.c_str())) {
+      job.text = job.destPath;
+      return;
+    }
+    Storage.remove(part.c_str());
+    job.error = JobError::FileError;
+    return;
+  }
+  if (Storage.exists(part.c_str())) Storage.remove(part.c_str());
+  job.error = result == HttpDownloader::ABORTED      ? JobError::Cancelled
+              : result == HttpDownloader::FILE_ERROR ? JobError::FileError
+                                                     : JobError::Unreachable;
+}
+
 void netTask(void* param) {
   auto* job = static_cast<NetJob*>(param);
-  {
+  if (job->kind == NetJob::Kind::Download) {
+    runDownload(*job);
+  } else {
     freeink::SecureHttpClient http;
     http.setInsecure();  // LAN servers commonly use self-signed certs
     http.setTimeout(job->timeoutMs);
@@ -134,6 +168,14 @@ void recordTask(void* param) {
     int16_t scratch[256];
     for (int i = 0; i < 6; ++i) mic.read(scratch, 256, 50);
 
+    // "Speak now" prompt, like the stock firmware; the samples captured while
+    // it plays are discarded so the beep isn't sent for transcription.
+    freeink::Buzzer buzzer;
+    if (buzzer.begin()) {
+      buzzer.tone(kStartBeepHz, kBeepMs);
+      for (int i = 0; i < 4; ++i) mic.read(scratch, 256, 50);
+    }
+
     auto* pcm = reinterpret_cast<int16_t*>(job->buffer.get() + kWavHeaderBytes);
     size_t count = 0;
     while (!job->stop && count < job->capacitySamples) {
@@ -150,6 +192,10 @@ void recordTask(void* param) {
       job->level = static_cast<uint16_t>(std::min(peak, 32767));
     }
     mic.end();
+    if (buzzer.present()) {
+      buzzer.tone(kStopBeepHz, kBeepMs);  // "got it"
+      buzzer.end();
+    }
   }
   if (job->error != JobError::None) LOG_ERR("HERMES", "mic error %u", static_cast<unsigned>(job->error));
   LOG_INF("HERMES", "recorded %u samples", static_cast<unsigned>(job->samples.load()));
@@ -168,7 +214,8 @@ void NetJob::release() { releaseJob(this); }
 
 bool startNetJob(NetJob* job) {
   job->refs.fetch_add(1);
-  if (xTaskCreatePinnedToCore(&netTask, "HermesNet", kNetTaskStackBytes, job, 1, nullptr, 0) != pdPASS) {
+  const uint32_t stack = job->kind == NetJob::Kind::Download ? kDownloadTaskStackBytes : kNetTaskStackBytes;
+  if (xTaskCreatePinnedToCore(&netTask, "HermesNet", stack, job, 1, nullptr, 0) != pdPASS) {
     job->refs.fetch_sub(1);
     LOG_ERR("HERMES", "Failed to start network task");
     return false;

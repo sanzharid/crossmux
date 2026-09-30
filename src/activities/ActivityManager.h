@@ -56,6 +56,7 @@ class ActivityManager {
   // Shared between the main task (core 0) and the render task (core 1), so it
   // must be atomic rather than a plain/volatile enum (FreeRTOS SMP data race).
   std::atomic<PendingAction> pendingAction{PendingAction::None};
+  bool lockRequested_ = false;
 
   // Task to render and display the activity
   TaskHandle_t renderTaskHandle = nullptr;
@@ -127,6 +128,14 @@ class ActivityManager {
   void goToCalculator();
   void goToWoodfish();
   void goToHermes();
+  void goToS3xy();
+  // AI-button push-to-talk: starts listening in the open Hermes chat, or opens
+  // one on top of the current screen (Back returns there).
+  void goToHermesPushToTalk();
+  // Pushes the lock screen at the start of the next loop (safe from main.cpp
+  // and during boot, when a Replace may still be pending).
+  void requestLock();
+  bool isLocked() const;
   void goToAirPage();
   void goToBuddy();
   void goToStandby();
@@ -138,6 +147,8 @@ class ActivityManager {
   void goToWeRead();
 #endif
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
+  // The main tab "home" lands on (Settings → Controls → Home screen).
+  MainTab homeMainTab() const;
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
 
   // This will move current activity to stack instead of deleting it

@@ -38,7 +38,9 @@
 #include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
+#include "ScreenLock.h"
 #include "activities/home/FileBrowserActivity.h"
+#include "activities/lock/LockScreenActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
@@ -313,6 +315,16 @@ void SettingsActivity::rebuildSettingsLists() {
           SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::FOOTNOTES) {
         continue;
       }
+#if FREEINK_DEVICE_STICKY
+      // The AI key is both OK and power: "AI button: click/hold" replace the
+      // generic power-button setting (only Ignore/Sleep ever applied here), and
+      // the reader's long-press OK action is off while hold is push-to-talk.
+      if (setting.valuePtr == &CrossPointSettings::shortPwrBtn ||
+          setting.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack ||
+          (setting.valuePtr == &CrossPointSettings::longPressMenuFunction && SETTINGS.holdToTalk())) {
+        continue;
+      }
+#endif
       controlsSettings.push_back(setting);
     } else if (setting.category == StrId::STR_CAT_SYSTEM) {
       // These stay in the shared list for persistence and the web API, but the
@@ -331,6 +343,29 @@ void SettingsActivity::rebuildSettingsLists() {
     controlsSettings.insert(controlsSettings.begin(),
                             SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
   }
+#if FREEINK_DEVICE_STICKY
+  // Group Controls by button: home, AI key, page buttons, touch/tilt, reader,
+  // lock. Entries not named here keep their relative order after these.
+  {
+    static constexpr const char* kOrder[] = {"homeScreen",       "aiButtonClick",      "aiButtonHold",
+                                             "sideButtonLayout", "longPressButtonBehavior", "touchReaderControls",
+                                             "tiltPageTurn",     "longPressMenuFunction",   "lockOnWake"};
+    const auto rank = [](const SettingInfo& s) {
+      for (size_t i = 0; i < sizeof(kOrder) / sizeof(kOrder[0]); ++i) {
+        if (s.key && std::strcmp(s.key, kOrder[i]) == 0) return static_cast<int>(i);
+      }
+      return static_cast<int>(sizeof(kOrder) / sizeof(kOrder[0]));
+    };
+    std::stable_sort(controlsSettings.begin(), controlsSettings.end(),
+                     [&](const SettingInfo& a, const SettingInfo& b) { return rank(a) < rank(b); });
+    auto lockToggle = std::find_if(controlsSettings.begin(), controlsSettings.end(), [](const SettingInfo& s) {
+      return s.valuePtr == &CrossPointSettings::lockOnWake;
+    });
+    controlsSettings.insert(lockToggle, SettingInfo::Action(StrId::STR_LOCK_PIN, SettingAction::ScreenLockPin));
+  }
+#else
+  controlsSettings.push_back(SettingInfo::Action(StrId::STR_LOCK_PIN, SettingAction::ScreenLockPin));
+#endif
 #if FREEINK_CAP_BLE_HID_HOST
   controlsSettings.push_back(SettingInfo::Action(StrId::STR_BLUETOOTH, SettingAction::Bluetooth));
 #endif
@@ -764,6 +799,9 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::RemapFrontButtons:
         startActivityForResultWith<ButtonRemapActivity>(resultHandler);
         break;
+      case SettingAction::ScreenLockPin:
+        startPinFlow();
+        break;
       case SettingAction::Bluetooth:
 #if FREEINK_CAP_BLE_HID_HOST
         releaseListsForMemoryHungryChild();
@@ -1145,4 +1183,59 @@ void SettingsActivity::render(RenderLock&&) {
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();
+}
+
+void SettingsActivity::startPinFlow() {
+  if (!ScreenLock::hasPin()) {
+    askNewPin(false, StrId::STR_LOCK_NEW_PIN);
+    return;
+  }
+  const bool started = startActivityForResultWith<LockScreenActivity>(
+      [this](const ActivityResult& result) {
+        if (result.isCancelled) {
+          finishPinFlow();
+          return;
+        }
+        askNewPin(true, StrId::STR_LOCK_NEW_PIN);
+      },
+      LockScreenActivity::Mode::Verify, StrId::STR_LOCK_CURRENT_PIN);
+  if (!started) finishPinFlow();
+}
+
+void SettingsActivity::askNewPin(const bool allowRemove, const StrId prompt) {
+  const bool started = startActivityForResultWith<LockScreenActivity>(
+      [this, allowRemove](const ActivityResult& result) {
+        if (result.isCancelled) {
+          finishPinFlow();
+          return;
+        }
+        const std::string pin = std::get<KeyboardResult>(result.data).text;
+        if (pin.empty()) {  // "Remove" key
+          ScreenLock::clearPin();
+          finishPinFlow();
+          return;
+        }
+        const bool confirmStarted = startActivityForResultWith<LockScreenActivity>(
+            [this, allowRemove, pin](const ActivityResult& confirm) {
+              if (confirm.isCancelled) {
+                finishPinFlow();
+                return;
+              }
+              if (std::get<KeyboardResult>(confirm.data).text != pin) {
+                askNewPin(allowRemove, StrId::STR_LOCK_PIN_MISMATCH);
+                return;
+              }
+              if (!ScreenLock::setPin(pin)) LOG_ERR("SET", "Failed to save screen lock PIN");
+              finishPinFlow();
+            },
+            LockScreenActivity::Mode::Enter, StrId::STR_LOCK_CONFIRM_PIN, false);
+        if (!confirmStarted) finishPinFlow();
+      },
+      LockScreenActivity::Mode::Enter, prompt, allowRemove);
+  if (!started) finishPinFlow();
+}
+
+void SettingsActivity::finishPinFlow() {
+  rebuildSettingsLists();
+  requestUpdate();
 }

@@ -59,6 +59,9 @@ class Activity {
   virtual bool handleForcedRefresh() { return false; }
   virtual bool isHomeActivity() const { return false; }
   virtual bool handleHomeGesture() { return false; }
+  // True for the lock screen: ActivityManager and main.cpp skip every global
+  // shortcut (tabs, home swipe, panels, push-to-talk) while it is on top.
+  virtual bool blocksGlobalShortcuts() const { return false; }
   virtual MainTab mainTab() const { return MainTab::None; }
   virtual bool mainTabBackReturnsToTabs() const { return true; }
   virtual void selectMainTabContentEdge(MainTabContentEdge) {}

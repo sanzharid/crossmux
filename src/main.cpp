@@ -37,6 +37,7 @@
 #include "OpdsServerStore.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "ScreenLock.h"
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -119,6 +120,73 @@ void updateBluetoothLifecycle() {
 // A wake hold must never become an in-app power-button action.  Boot may continue
 // while the button is held; swallow the one release that ends that wake gesture.
 static bool wakePowerReleasePending = false;
+// Set by the screenshot combo (which returns before handleAiButton runs).
+static bool aiButtonPressConsumed = false;
+
+void enterDeepSleep(bool fromTimeout);
+
+// Sticky AI (OK/power) key, stock-firmware style:
+//  * hold ~1 s  -> push-to-talk to Hermes (when "Hold AI button" = Talk);
+//                  release sends (the Hermes activity watches the release)
+//  * short click -> lock screen / sleep / Confirm ("AI button click")
+//  * both page buttons ~1 s -> sleep (the hold no longer sleeps)
+// A press that woke the device, or that is part of the Power+Down screenshot
+// combo, triggers nothing. While locked, only sleep works.
+static void handleAiButton() {
+  constexpr unsigned long kHoldToTalkMs = 1000;
+  constexpr unsigned long kPageComboSleepMs = 1000;
+  static bool wasDown = false;
+  static bool ignorePress = false;
+  static bool holdFired = false;
+  static unsigned long downAt = 0;
+  static unsigned long pageComboSince = 0;
+
+  const bool down = gpio.isPressed(HalGPIO::BTN_POWER);
+  const unsigned long now = millis();
+  if (down && !wasDown) {
+    downAt = now;
+    holdFired = false;
+    ignorePress = wakePowerReleasePending || now < allowSleepAt;
+  }
+  if (aiButtonPressConsumed) {
+    ignorePress = true;
+    aiButtonPressConsumed = false;
+  }
+  if (down && (wakePowerReleasePending || gpio.isPressed(HalGPIO::BTN_DOWN))) ignorePress = true;
+
+  if (down && !ignorePress && !holdFired && SETTINGS.holdToTalk() && now - downAt > kHoldToTalkMs &&
+      !activityManager.isLocked() && !activityManager.requiresExclusiveStorageLoop()) {
+    holdFired = true;
+    LOG_DBG("MAIN", "AI button held, starting Hermes push-to-talk");
+    activityManager.goToHermesPushToTalk();
+  }
+
+  if (!down && wasDown && !ignorePress && !holdFired && now - downAt < kHoldToTalkMs) {
+    switch (SETTINGS.aiButtonClick) {
+      case CrossPointSettings::AI_CLICK_LOCK:
+        if (!activityManager.isLocked()) {
+          LOG_DBG("MAIN", "AI button click, locking");
+          activityManager.requestLock();
+        }
+        break;
+      case CrossPointSettings::AI_CLICK_SLEEP:
+        enterDeepSleep(false);
+        break;
+      default:
+        break;  // Confirm: delivered as a normal CONFIRM click by the SDK
+    }
+  }
+  wasDown = down;
+
+  if (!(gpio.isPressed(HalGPIO::BTN_UP) && gpio.isPressed(HalGPIO::BTN_DOWN))) {
+    pageComboSince = 0;
+  } else if (pageComboSince == 0) {
+    pageComboSince = now;
+  } else if (now >= allowSleepAt && now - pageComboSince > kPageComboSleepMs) {
+    LOG_DBG("MAIN", "Both page buttons held, sleeping");
+    enterDeepSleep(false);
+  }
+}
 
 // Fonts
 // All legacy built-in reader IDs share one 12pt offline fallback. Complete
@@ -635,7 +703,7 @@ void setup() {
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
 #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
-    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4
+    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_STICKY
       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
       // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
@@ -643,6 +711,9 @@ void setup() {
       // USB-power cold boot and sleep. Waveshare 3.97 hits both: its side key is
       // behind the AXP2101 (input.power == PIN_UNASSIGNED) and it is a native-USB
       // S3, so startDeepSleep() there is a PMIC shutdown on every cabled boot.
+      // Sticky's WCH bridge resets the S3 through EN on every flash or serial
+      // connect, which reads as POWERON with USB present, so it would drop back
+      // to sleep (panel frozen on the old image) right after each flash.
       // Sleeping any of these here would strand the device in a USB-replug boot
       // loop (or sleep right after a flash).
       break;
@@ -748,9 +819,10 @@ void setup() {
     // openEpubPath + lastSleepFromReader from a prior session.
     activityManager.goHome();
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
+             SETTINGS.homeScreen == CrossPointSettings::HOME_APPS ||
              mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
+    // Boot to home screen if no book is open, last sleep was not from reader, home is the Apps grid (no book
+    // auto-resume), back button is held, or reader activity crashed (indicated by readerActivityLoadCount > 0)
     if (needsWakeRefresh) renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
     activityManager.goHome();
   } else {
@@ -765,6 +837,15 @@ void setup() {
     // reader resume also clears the retained frame.
     if (needsWakeRefresh) renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
     activityManager.goToReader(path, allowFastInitialReaderRefresh);
+  }
+
+  // Lock before the routed screen is painted: a pending Replace gets the lock
+  // pushed right after its onEnter (ActivityManager), and running one loop now
+  // does it before the Silent-resume paint below.
+  if ((ScreenLock::wasLocked() || (SETTINGS.lockOnWake && ScreenLock::hasPin())) && !recoveryFirmwareMode &&
+      !HalSystem::isRebootFromPanic()) {
+    activityManager.requestLock();
+    activityManager.loop();
   }
 
   if (resume == BootResume::Silent) {
@@ -798,7 +879,7 @@ void loop() {
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
 
-  gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
+  gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.sharedClickEmitsPower());
   mappedInputManager.update();
 #if FREEINK_CAP_HAPTIC
   gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
@@ -883,6 +964,7 @@ void loop() {
   static bool screenshotComboActive = false;
   if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.isPressed(HalGPIO::BTN_DOWN)) {
     screenshotComboActive = true;
+    aiButtonPressConsumed = true;
     if (screenshotButtonsReleased) {
       screenshotButtonsReleased = false;
       {
@@ -922,8 +1004,16 @@ void loop() {
     return;
   }
 
-  if (millis() >= allowSleepAt && gpio.isPressed(HalGPIO::BTN_POWER) &&
-      gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
+#if FREEINK_DEVICE_STICKY
+  const bool aiButtonOwnsHold = SETTINGS.holdToTalk();
+  handleAiButton();
+#else
+  constexpr bool aiButtonOwnsHold = false;
+#endif
+  if (aiButtonOwnsHold) {
+    // Hold is push-to-talk; sleep is the page-button combo (handleAiButton).
+  } else if (millis() >= allowSleepAt && gpio.isPressed(HalGPIO::BTN_POWER) &&
+             gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
     // If the screenshot combination is potentially being pressed, don't sleep
     if (gpio.isPressed(HalGPIO::BTN_DOWN)) {
       return;

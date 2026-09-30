@@ -22,7 +22,8 @@ class NimblePsramMiddlewareTest(unittest.TestCase):
                         self.assertNotIn("extra_scripts", config[name])
         self.assertEqual(
             config["sticky_hardware"]["custom_sdkconfig"].split(),
-            ["${firmware_tuned.custom_sdkconfig}", "${s3_ble_controller.custom_sdkconfig}"],
+            ["${firmware_tuned.custom_sdkconfig}", "${s3_ble_controller.custom_sdkconfig}",
+             "${sticky_s3xy.custom_sdkconfig}"],
         )
         self.assertNotIn("BOARD_HAS_PSRAM", config["sticky_hardware"]["build_flags"])
         self.assertIn("CONFIG_ARDUINO_LOOP_STACK_SIZE=16384", config["eego_a4_hardware"]["custom_sdkconfig"])

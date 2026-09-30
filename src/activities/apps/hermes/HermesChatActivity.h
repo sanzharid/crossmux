@@ -21,8 +21,17 @@
 // while the app is open.
 class HermesChatActivity final : public Activity {
  public:
-  explicit HermesChatActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("Hermes", renderer, mappedInput) {}
+  static constexpr const char* kName = "Hermes";
+  // AppsMenu: opened from Apps, Back returns there. PushToTalk: pushed over the
+  // current screen by the AI-button hold, starts listening, Back pops.
+  enum class Launch : uint8_t { AppsMenu, PushToTalk };
+
+  explicit HermesChatActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                              const Launch launch = Launch::AppsMenu)
+      : Activity(kName, renderer, mappedInput), launch_(launch) {}
+
+  // Starts recording until the AI (power) button is released. No-op while busy.
+  void beginPushToTalk();
 
   void onEnter() override;
   void onExit() override;
@@ -32,19 +41,27 @@ class HermesChatActivity final : public Activity {
   bool keepsBluetoothAlive() const override { return true; }
 
  private:
-  enum class Phase : uint8_t { Idle, WifiConnecting, Thinking, Recording, Transcribing };
+  enum class Phase : uint8_t { Idle, WifiConnecting, Thinking, Recording, Transcribing, Downloading };
   enum class Pending : uint8_t { None, Chat, Transcribe };
-  enum class Role : uint8_t { User, Agent, Notice };
+  // Book: a downloaded book; tapping its lines opens it in the reader.
+  enum class Role : uint8_t { User, Agent, Notice, Book };
   enum class Action : uint8_t { Type, Talk, Send, Setup, Count };
 
   struct Message {
     Role role;
     std::string text;
+    std::string bookPath;  // Role::Book only
   };
   struct Line {
     std::string text;
     Role role;
     bool label;
+    int16_t message;  // index into messages_
+  };
+  struct TapTarget {
+    int16_t top;
+    int16_t bottom;
+    int16_t message;
   };
 
   // --- state (mutated under RenderLock; read by render()) ---
@@ -60,6 +77,10 @@ class HermesChatActivity final : public Activity {
   uint32_t linesVersion_ = 0;
   int linesWidth_ = 0;
   int visibleRows_ = 1;
+  std::vector<TapTarget> bookTargets_;  // visible Book lines from the last render
+
+  const Launch launch_;
+  bool pushToTalk_ = false;  // recording ends when the power button is released
 
   // --- work in flight ---
   hermes::NetJob* job_ = nullptr;
@@ -68,6 +89,7 @@ class HermesChatActivity final : public Activity {
   Pending pending_ = Pending::None;
   std::string pendingText_;
   hermes::NetJob* pendingJob_ = nullptr;  // transcription waiting for Wi-Fi
+  std::vector<std::string> pendingDownloads_;  // book links from the last reply
 
   // --- radios ---
   bool ownsWifi_ = false;
@@ -94,6 +116,9 @@ class HermesChatActivity final : public Activity {
   void pollJobs();
   void onChatDone(hermes::NetJob& job);
   void onTranscribeDone(hermes::NetJob& job);
+  void onDownloadDone(hermes::NetJob& job);
+  void startNextDownload();
+  bool openTappedBook(int y);
 
   // Radios
   bool ensureWifi();  // true = connected now; false = connecting/picker opened
@@ -105,7 +130,7 @@ class HermesChatActivity final : public Activity {
   void maintainBluetooth();
 
   // Transcript
-  void addMessage(Role role, std::string text);
+  void addMessage(Role role, std::string text, std::string bookPath = {});
   void addError(hermes::JobError error, const hermes::NetJob* job, bool transcription);
   void loadHistory();
   void saveHistory() const;

@@ -17,10 +17,12 @@ METHOD = """  uint32_t onPassKeyDisplay(NimBLEConnInfo&) override {
 
 def write_compatible_source(target, source, env):
     original = Path(source[0].get_abspath()).read_text(encoding="utf-8")
-    if original.count(METHOD) != 1:
+    already_compatible = original.count(METHOD) == 0 and "onPassKeyDisplay" not in original
+    if original.count(METHOD) != 1 and not already_compatible:
         raise RuntimeError("Unsupported BleKeyboardHost passkey callback; check the SDK/NimBLE pins")
     output = Path(target[0].get_abspath())
     output.parent.mkdir(parents=True, exist_ok=True)
+    # A source that already lacks the callback (e.g. a pre-patched build copy) passes through unchanged.
     output.write_text(original.replace(METHOD, "", 1), encoding="utf-8")
 
 

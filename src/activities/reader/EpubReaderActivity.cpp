@@ -1197,6 +1197,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
 }
 
 unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
+  // On the Sticky, holding Confirm (the AI key) is push-to-talk; bookmark and
+  // dictionary stay reachable from the touch reader menu.
+  if (SETTINGS.holdToTalk()) return 0;
   switch (SETTINGS.longPressMenuFunction) {
     case CrossPointSettings::LP_MENU_BOOKMARK:
     case CrossPointSettings::LP_MENU_DICTIONARY:

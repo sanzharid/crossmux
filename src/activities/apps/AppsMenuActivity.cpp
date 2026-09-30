@@ -50,6 +50,9 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
     {AppId::Woodfish, StrId::STR_WOODFISH_TITLE, UIIcon::Woodfish, &ActivityManager::goToWoodfish},
     {AppId::Hermes, StrId::STR_HERMES_TITLE, UIIcon::Hermes, &ActivityManager::goToHermes},
+#if S3XY_BUTTON
+    {AppId::S3xy, StrId::STR_S3XY_TITLE, UIIcon::S3xy, &ActivityManager::goToS3xy},
+#endif
     {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandby},
 };
 

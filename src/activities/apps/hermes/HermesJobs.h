@@ -34,10 +34,11 @@ enum class JobError : uint8_t {
   NoMemory,
   MicUnavailable,
   MicFailed,
+  FileError,
 };
 
 struct NetJob {
-  enum class Kind : uint8_t { Chat, Transcribe };
+  enum class Kind : uint8_t { Chat, Transcribe, Download };
 
   // Inputs (written before start, read-only afterwards).
   Kind kind = Kind::Chat;
@@ -51,6 +52,8 @@ struct NetJob {
   memory::ByteBuffer audio;  // PSRAM: 44-byte WAV header + PCM
   size_t audioBytes = 0;
   uint32_t timeoutMs = 180000;
+  std::string destPath;         // Download: final SD path (written via destPath + ".part")
+  bool downloadCancel = false;  // Download: HttpDownloader polls a plain bool per chunk
 
   // Outputs (valid once state != Running).
   std::string text;

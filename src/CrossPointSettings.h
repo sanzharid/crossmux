@@ -1,4 +1,11 @@
 #pragma once
+
+#ifndef FREEINK_DEVICE_STICKY
+#define FREEINK_DEVICE_STICKY 0
+#endif
+#ifndef HERMES_HAS_MIC
+#define HERMES_HAS_MIC 0
+#endif
 #include <ArduinoJson.h>
 #include <BoardConfig.h>
 #include <Epub/ReaderRenderSpec.h>
@@ -197,6 +204,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     REFRESH_FREQUENCY_COUNT
   };
 
+  // Where "home" (boot, wake, home gesture, Back from a tab) lands. Persisted by index; append only.
+  enum HOME_SCREEN { HOME_RECENT = 0, HOME_APPS = 1, HOME_SCREEN_COUNT };
+
+  // Short AI-button click on boards whose OK and power share one key (Sticky).
+  // Persisted by index; append only.
+  enum AI_BUTTON_CLICK { AI_CLICK_CONFIRM = 0, AI_CLICK_LOCK = 1, AI_CLICK_SLEEP = 2, AI_BUTTON_CLICK_COUNT };
+
+  // Long power/AI button hold actions (persisted by index; append only)
+  enum AI_BUTTON_HOLD { AI_HOLD_SLEEP = 0, AI_HOLD_HERMES = 1, AI_BUTTON_HOLD_COUNT };
+
   // Short power button press actions
   enum SHORT_PWRBTN {
     IGNORE = 0,
@@ -325,6 +342,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   int8_t readingGuideLineOffset = READING_GUIDE_LINE_OFFSET_DEFAULT;
   // Short power button click behaviour
   uint8_t shortPwrBtn = IGNORE;
+  // Holding the power/AI button: sleep, or push-to-talk to the Hermes app (mic
+  // boards default to talk, like the Sticky's stock firmware; sleep then moves
+  // to holding both page buttons).
+  uint8_t aiButtonHold = HERMES_HAS_MIC ? AI_HOLD_HERMES : AI_HOLD_SLEEP;
+  // Apps grid as home on the Sticky; Recent (last book) is the upstream default.
+  // Only the INX tab UI honours it: other themes' Home menu is the sole route
+  // to Settings, so they always go home to that menu.
+  uint8_t homeScreen = FREEINK_DEVICE_STICKY ? HOME_APPS : HOME_RECENT;
+  uint8_t aiButtonClick = FREEINK_DEVICE_STICKY ? AI_CLICK_LOCK : AI_CLICK_CONFIRM;
+  // Show the lock screen after waking from sleep (only when a PIN is set).
+  uint8_t lockOnWake = 1;
   // EPUB reading orientation settings
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
@@ -475,6 +503,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   using SdFontIdResolver = int (*)(void* ctx, const char* familyName, uint8_t pointSize);
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
+
+  bool holdToTalk() const { return HERMES_HAS_MIC && aiButtonHold == AI_HOLD_HERMES; }
+  // Short clicks of the shared OK/power key are reported as POWER (not
+  // CONFIRM) whenever the click has its own action.
+  bool sharedClickEmitsPower() const {
+    return shortPwrBtn == SLEEP || (FREEINK_DEVICE_STICKY && aiButtonClick != AI_CLICK_CONFIRM);
+  }
 
   uint16_t getPowerButtonDuration() const {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;

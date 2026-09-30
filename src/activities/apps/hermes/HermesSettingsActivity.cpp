@@ -28,6 +28,7 @@ enum Row : int {
   kSttModel,
   kSttLanguage,
   kAutoSend,
+  kDownloadBooks,
   kMaxRecord,
   kNewChat,
   kRowCount,
@@ -38,7 +39,8 @@ const StrId kRowNames[kRowCount] = {
     StrId::STR_HERMES_SERVER_URL, StrId::STR_HERMES_API_KEY,      StrId::STR_HERMES_MODEL,
     StrId::STR_HERMES_CONVERSATION, StrId::STR_HERMES_API_STYLE,  StrId::STR_HERMES_TIMEOUT,
     StrId::STR_HERMES_STT_URL,    StrId::STR_HERMES_STT_KEY,      StrId::STR_HERMES_STT_MODEL,
-    StrId::STR_HERMES_STT_LANGUAGE, StrId::STR_HERMES_AUTO_SEND,  StrId::STR_HERMES_MAX_RECORD,
+    StrId::STR_HERMES_STT_LANGUAGE, StrId::STR_HERMES_AUTO_SEND,  StrId::STR_HERMES_DOWNLOAD_BOOKS,
+    StrId::STR_HERMES_MAX_RECORD,
     StrId::STR_HERMES_NEW_CHAT,
 };
 
@@ -157,6 +159,9 @@ void HermesSettingsActivity::activateIndex(const int index) {
     case kAutoSend:
       store.voiceAutoSend = !store.voiceAutoSend;
       break;
+    case kDownloadBooks:
+      store.downloadBooks = !store.downloadBooks;
+      break;
     case kMaxRecord:
       store.cycleMaxRecord();
       break;
@@ -217,6 +222,9 @@ void HermesSettingsActivity::buildScreen(UiScreen& screen) {
         break;
       case kAutoSend:
         rowValues_[i] = store.voiceAutoSend ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+        break;
+      case kDownloadBooks:
+        rowValues_[i] = store.downloadBooks ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
         break;
       case kMaxRecord:
         rowValues_[i] = secondsLabel(store.maxRecordSeconds);

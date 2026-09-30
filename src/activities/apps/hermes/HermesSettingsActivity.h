@@ -13,7 +13,7 @@ class HermesSettingsActivity final : public UiListActivity {
  public:
   explicit HermesSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  static constexpr int MENU_ITEMS = 13;
+  static constexpr int MENU_ITEMS = 14;
 
   // True once after the user started a new conversation (the chat screen then
   // clears its local transcript).

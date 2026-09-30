@@ -34,6 +34,7 @@ class HermesStore : public PersistableStore<HermesStore> {
   std::string sttModel = "whisper-1";
   std::string sttLanguage;  // optional ISO code, e.g. "en"; empty = auto-detect
   bool voiceAutoSend = true;  // send the transcript straight to Hermes
+  bool downloadBooks = true;  // fetch .epub/.txt/.xtc links in replies into /Books/Hermes
   uint8_t maxRecordSeconds = 30;
 
   // A bare "http://" prefill left in place does not count as configured.

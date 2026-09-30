@@ -33,6 +33,7 @@ enum class SettingAction {
   TextSettings,
   About,
   KeyboardLayouts,
+  ScreenLockPin,
 };
 
 struct SettingInfo {
@@ -248,6 +249,10 @@ class SettingsActivity final : public UiTabListActivity {
   void confirmRestoreSystemSettings();
   void releaseListsForMemoryHungryChild();
   void rebuildSettingsLists();
+  // Screen-lock PIN: verify the current one (if any), then collect and confirm a new one.
+  void startPinFlow();
+  void askNewPin(bool allowRemove, StrId prompt);
+  void finishPinFlow();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
 
  public:

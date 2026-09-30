@@ -57,12 +57,72 @@ OpenAI-compatible Whisper server works (e.g. faster-whisper-server /
 speaches, LocalAI, whisper.cpp's server with an OpenAI-compatible route, or
 OpenAI itself).
 
-## Controls
+## AI button
+
+On the Sticky the AI key is both OK and power. Settings → Controls:
+
+| Setting | Options (default first) |
+|---|---|
+| AI button: click | **Lock screen**, Confirm, Sleep |
+| AI button: hold | **Talk to Hermes**, Sleep |
+
+| Gesture | Action |
+|---|---|
+| Hold ~1 s (anywhere) | Opens Hermes over the current screen and listens. High beep = speak now. |
+| Release | Low beep; the clip is transcribed and sent (or put in the draft if "Send voice immediately" is off). |
+| Click | Locks the screen (or Confirm / Sleep, per setting). A click never records. |
+| Both page buttons ~1 s | Sleep. |
+| Power+Down | Screenshot. |
+
+Back in a chat opened by the hold returns to the screen you were on. The press
+that wakes the device never records or locks.
+
+## Lock screen
+
+Settings → Controls → **Screen lock PIN** sets, changes or removes a 4-digit
+PIN (current PIN first, then the new one twice; "Remove" on the new-PIN pad
+clears it). With a PIN, the lock screen is a PIN pad and **Lock when waking**
+(on by default) locks again after sleep. Without a PIN it is a tap-to-unlock
+screen. While locked, tabs, the home swipe and push-to-talk are disabled; the
+page-button sleep combo still works.
+
+Five wrong PINs start a lockout of 30 s, doubling per further miss up to
+15 min (a reboot restarts, not skips, the wait). The PIN is stored as
+SHA-256(random salt + PIN) in internal flash (NVS), not on the SD card. It is a
+privacy lock, not encryption: books and settings on the SD card stay readable
+if the card is removed.
+
+## Books from Hermes
+
+When a Hermes reply contains a direct `http(s)` link to an `.epub`, `.txt`,
+`.md`, `.xtc` or `.xtch` file, the app downloads it (up to 3 per reply) into
+`/Books/Hermes/` on the SD card, then shows a bold, underlined
+"Saved to Books/Hermes: …" line. Tap it to open the book. The book also appears
+in Library. Existing files are never overwritten (`Title (2).epub`). Turn this
+off with Setup → "Download book links".
+
+The link only has to be reachable from the Sticky's Wi-Fi. The simplest setup
+on the Hermes machine is a folder served over HTTP:
+
+```bash
+mkdir -p ~/sticky-books && cd ~/sticky-books && python3 -m http.server 8765
+```
+
+Then give Hermes a standing instruction (e.g. add it to its memory or SOUL.md):
+
+> When I ask you to send a book to my Sticky, get the EPUB (convert other
+> formats to EPUB with Calibre's `ebook-convert` if needed), save it into
+> `~/sticky-books/` with a readable file name like `Author - Title.epub`, and
+> reply with the direct link `http://<this-machine's-LAN-address>:8765/<file name>`
+> on its own line. Percent-encode spaces in the link.
+
+A public direct link (e.g. Project Gutenberg's `.epub` URLs) works the same way.
+
+## Controls in the chat
 
 | Input | Action |
 |---|---|
-| AI button (Sticky Confirm/power click) | Start / stop recording. Holding it still sleeps the device. |
-| Talk / Stop / Cancel button | Same as the AI button; cancels a pending request while busy. |
+| Talk / Stop / Cancel (touch) | Start / stop recording; cancels a pending request or download while busy. |
 | Type button or tapping the draft line | On-screen keyboard; Done sends. |
 | BLE keyboard | Types into the draft line. Enter sends, Backspace deletes, Esc clears or cancels, arrows / PgUp / PgDn scroll. |
 | Side buttons, swipes | Scroll the transcript. |

@@ -43,6 +43,7 @@ void HermesStore::toJson(JsonDocument& doc) const {
   doc["sttModel"] = sttModel;
   doc["sttLanguage"] = sttLanguage;
   doc["voiceAutoSend"] = voiceAutoSend;
+  doc["downloadBooks"] = downloadBooks;
   doc["maxRecordSeconds"] = maxRecordSeconds;
 }
 
@@ -60,6 +61,7 @@ bool HermesStore::fromJson(JsonVariantConst doc) {
   sttModel = doc["sttModel"] | sttModel.c_str();
   sttLanguage = doc["sttLanguage"] | "";
   voiceAutoSend = doc["voiceAutoSend"] | true;
+  downloadBooks = doc["downloadBooks"] | true;
   maxRecordSeconds = validOption(kRecordSecondsOptions, static_cast<uint8_t>(doc["maxRecordSeconds"] | 30),
                                  static_cast<uint8_t>(30));
   return true;

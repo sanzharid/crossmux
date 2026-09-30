@@ -409,7 +409,23 @@ bool MappedInputManager::wasEdgeSwipe(const freeink::ui::ScreenEdge edge) const 
   int ex = 0;
   int ey = 0;
   if (!decodeSwipe(sx, sy, ex, ey)) return false;
-  const bool hit = fui::edgeSwipe(edge, sx, sy, ex, ey, renderer.getScreenWidth(), renderer.getScreenHeight());
+  const int width = renderer.getScreenWidth();
+  const int height = renderer.getScreenHeight();
+  bool hit;
+  if (edge == fui::ScreenEdge::Bottom) {
+    // The bottom-edge swipe leaves the current app, and an ordinary scroll
+    // (swipe up) starting in the lower screen used to trigger it: the SDK band
+    // is 14% of the height. Require the swipe to start in the bezel-adjacent
+    // strip and travel a deliberate distance.
+    constexpr int kBottomEdgeMinPx = 40;
+    constexpr float kBottomEdgeFrac = 0.06f;
+    constexpr float kBottomMinTravelFrac = 0.15f;
+    const int band = std::max(kBottomEdgeMinPx, static_cast<int>(height * kBottomEdgeFrac));
+    hit = fui::edgeSwipe(edge, sx, sy, ex, ey, width, height, static_cast<float>(band) / height) &&
+          sy - ey >= static_cast<int>(height * kBottomMinTravelFrac);
+  } else {
+    hit = fui::edgeSwipe(edge, sx, sy, ex, ey, width, height);
+  }
   if (hit) rememberTouchHeldTime();
   return hit;
 }

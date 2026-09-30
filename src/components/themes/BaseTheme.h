@@ -177,6 +177,7 @@ enum UIIcon {
   Calculator,
   Woodfish,
   Hermes,
+  S3xy,
   Usb
 };
 

@@ -18,6 +18,7 @@
 #include "NetworkStartup.h"
 #include "WifiCredentialStore.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "HalStorage.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -34,7 +35,9 @@ constexpr uint32_t kMinRecordingSamples = 16000 / 3;  // ~0.33 s
 constexpr int kBodyFont = NOTOSANS_14_FONT_ID;
 constexpr int kLabelFont = UI_10_FONT_ID;
 constexpr int kDraftFont = UI_12_FONT_ID;
-constexpr int kMinButtonGap = 8;  // AGENTS rule 14: >= 6 px between controls
+constexpr int kMinButtonGap = 8;
+constexpr char kBooksFolder[] = "/Books/Hermes";
+constexpr uint32_t kDownloadTimeoutMs = 10 * 60 * 1000;  // AGENTS rule 14: >= 6 px between controls
 
 // Removes the last UTF-8 code point.
 void popCodePoint(std::string& s) {
@@ -59,7 +62,15 @@ void HermesChatActivity::onEnter() {
   loadHistory();
   mappedInput.setBleTextMode(true);
   lastTickMs_ = millis();
+  if (launch_ == Launch::PushToTalk) beginPushToTalk();
   requestUpdate();
+}
+
+void HermesChatActivity::beginPushToTalk() {
+  // Swallow the release that ends this hold even if recording can't start
+  // (no mic / no STT URL), so it isn't read as a Confirm click afterwards.
+  pushToTalk_ = true;
+  if (phase_ == Phase::Idle) toggleRecording();
 }
 
 void HermesChatActivity::onExit() {
@@ -150,19 +161,31 @@ void HermesChatActivity::handleBleKeys() {
 
 void HermesChatActivity::handleButtons() {
   using Button = MappedInputManager::Button;
+  if (pushToTalk_) {
+    // Hold-to-talk: releasing the AI (power) button ends the clip. The release
+    // itself is consumed here so it never doubles as a Confirm click.
+    if (!mappedInput.isPressed(Button::Power)) {
+      pushToTalk_ = false;
+      if (phase_ == Phase::Recording && rec_) rec_->stop = true;
+    }
+    return;
+  }
   if (mappedInput.wasReleased(Button::Back)) {
     if (phase_ != Phase::Idle) {
       cancelWork();
       return;
     }
-    activityManager.goToApps();
+    if (launch_ == Launch::PushToTalk) {
+      finish();  // back to the screen the AI button was held on
+    } else {
+      activityManager.goToApps();
+    }
     return;
   }
   if (mappedInput.wasReleased(Button::Confirm)) {
-    // The Sticky's AI button is its Confirm/power key: push-to-toggle voice.
-    if (hermes::micAvailable() && (phase_ == Phase::Idle || phase_ == Phase::Recording)) {
-      toggleRecording();
-    } else if (phase_ == Phase::Idle) {
+    // Voice is hold-to-talk only (main.cpp handles the AI-button hold); a
+    // Confirm click types or sends, like the Type/Send buttons.
+    if (phase_ == Phase::Idle) {
       if (draft_.empty()) {
         openKeyboard();
       } else {
@@ -193,6 +216,7 @@ void HermesChatActivity::handleTouch() {
       }
     }
     if (contains(l.draft, x, y) && phase_ == Phase::Idle) openKeyboard();
+    if (contains(l.transcript, x, y)) openTappedBook(y);
     return;
   }
   const auto swipe = mappedInput.wasSwipe();
@@ -225,6 +249,27 @@ void HermesChatActivity::runAction(const Action action) {
     case Action::Count:
       break;
   }
+}
+
+bool HermesChatActivity::openTappedBook(const int y) {
+  std::string path;
+  {
+    RenderLock lock(*this);
+    for (const TapTarget& target : bookTargets_) {
+      if (y >= target.top && y < target.bottom && target.message >= 0 &&
+          target.message < static_cast<int>(messages_.size())) {
+        path = messages_[static_cast<size_t>(target.message)].bookPath;
+        break;
+      }
+    }
+  }
+  if (path.empty() || phase_ != Phase::Idle) return false;
+  if (!Storage.exists(path.c_str())) {
+    addMessage(Role::Notice, tr(STR_HERMES_ERR_FILE));
+    return false;
+  }
+  activityManager.goToReader(path);
+  return true;
 }
 
 void HermesChatActivity::scrollBy(const int lines) {
@@ -382,9 +427,11 @@ void HermesChatActivity::releaseWork() {
   }
   if (job_) {
     job_->cancel = true;
+    job_->downloadCancel = true;
     job_->release();
     job_ = nullptr;
   }
+  pendingDownloads_.clear();
   if (pendingJob_) {
     pendingJob_->release();
     pendingJob_ = nullptr;
@@ -414,6 +461,8 @@ void HermesChatActivity::pollJobs() {
   }
   if (job->kind == hermes::NetJob::Kind::Chat) {
     onChatDone(*job);
+  } else if (job->kind == hermes::NetJob::Kind::Download) {
+    onDownloadDone(*job);
   } else {
     onTranscribeDone(*job);
   }
@@ -421,12 +470,83 @@ void HermesChatActivity::pollJobs() {
 }
 
 void HermesChatActivity::onChatDone(hermes::NetJob& job) {
+  if (job.state != hermes::JobState::Done) {
+    addError(job.error, &job, false);
+    afterRequest();
+    return;
+  }
+  // Links first: plainText() drops Markdown link targets.
+  if (HERMES_STORE.downloadBooks) pendingDownloads_ = hermes::findBookLinks(job.text);
+  addMessage(Role::Agent, hermes::plainText(job.text));
+  startNextDownload();  // Wi-Fi is still up; afterRequest() runs when the queue is empty
+}
+
+void HermesChatActivity::startNextDownload() {
+  if (pendingDownloads_.empty()) {
+    afterRequest();
+    return;
+  }
+  const std::string url = pendingDownloads_.front();
+  pendingDownloads_.erase(pendingDownloads_.begin());
+
+  if (!Storage.exists(kBooksFolder) && !Storage.mkdir(kBooksFolder)) {
+    LOG_ERR("HERMES", "Cannot create %s", kBooksFolder);
+    addError(hermes::JobError::FileError, nullptr, false);
+    pendingDownloads_.clear();
+    afterRequest();
+    return;
+  }
+  // Never overwrite: "Title.epub", "Title (2).epub", ...
+  const std::string name = hermes::bookFileName(url);
+  const size_t dot = name.find_last_of('.');
+  std::string dest = std::string(kBooksFolder) + "/" + name;
+  for (int n = 2; Storage.exists(dest.c_str()) && n < 100; ++n) {
+    dest = std::string(kBooksFolder) + "/" + name.substr(0, dot) + " (" + std::to_string(n) + ")" + name.substr(dot);
+  }
+  if (Storage.exists(dest.c_str())) {  // 99 copies already: never overwrite
+    addError(hermes::JobError::FileError, nullptr, false);
+    startNextDownload();
+    return;
+  }
+
+  hermes::NetJob* job = hermes::NetJob::create();
+  if (!job) {
+    LOG_ERR("HERMES", "OOM: NetJob");
+    addError(hermes::JobError::NoMemory, nullptr, false);
+    pendingDownloads_.clear();
+    afterRequest();
+    return;
+  }
+  job->kind = hermes::NetJob::Kind::Download;
+  job->url = url;
+  job->destPath = dest;
+  job->timeoutMs = kDownloadTimeoutMs;
+  if (!hermes::startNetJob(job)) {
+    job->release();
+    addError(hermes::JobError::NoMemory, nullptr, false);
+    pendingDownloads_.clear();
+    afterRequest();
+    return;
+  }
+  LOG_INF("HERMES", "Downloading book to %s", dest.c_str());
+  job_ = job;
+  RenderLock lock(*this);
+  phase_ = Phase::Downloading;
+  phaseStartedMs_ = millis();
+  lock.unlock();
+  requestUpdate();
+}
+
+void HermesChatActivity::onDownloadDone(hermes::NetJob& job) {
   if (job.state == hermes::JobState::Done) {
-    addMessage(Role::Agent, hermes::plainText(job.text));
+    const size_t slash = job.text.find_last_of('/');
+    char buffer[160];
+    snprintf(buffer, sizeof(buffer), tr(STR_HERMES_BOOK_SAVED), job.text.substr(slash + 1).c_str());
+    addMessage(Role::Book, buffer, job.text);
   } else {
     addError(job.error, &job, false);
   }
-  afterRequest();
+  startNextDownload();
 }
 
 void HermesChatActivity::onTranscribeDone(hermes::NetJob& job) {
@@ -593,11 +713,11 @@ void HermesChatActivity::maintainBluetooth() {
 // ---------------------------------------------------------------------------
 // Transcript
 
-void HermesChatActivity::addMessage(const Role role, std::string text) {
+void HermesChatActivity::addMessage(const Role role, std::string text, std::string bookPath) {
   {
     RenderLock lock(*this);
     if (messages_.size() >= kMaxMessages) messages_.erase(messages_.begin());
-    messages_.push_back(Message{role, std::move(text)});
+    messages_.push_back(Message{role, std::move(text), std::move(bookPath)});
     scrollLines_ = 0;
     ++messagesVersion_;
   }
@@ -635,6 +755,9 @@ void HermesChatActivity::addError(const hermes::JobError error, const hermes::Ne
     case JobError::MicFailed:
       message = tr(STR_HERMES_ERR_MIC);
       break;
+    case JobError::FileError:
+      message = tr(STR_HERMES_ERR_FILE);
+      break;
     case JobError::BadReply:
     case JobError::None:
       break;
@@ -657,7 +780,8 @@ void HermesChatActivity::loadHistory() {
     for (JsonVariantConst item : items) {
       if (messages_.size() >= kMaxMessages) break;
       const uint8_t role = item["r"] | static_cast<uint8_t>(0);
-      messages_.push_back(Message{role == 1 ? Role::Agent : Role::User, std::string(item["t"] | "")});
+      const Role r = role == 1 ? Role::Agent : role == 2 ? Role::Book : Role::User;
+      messages_.push_back(Message{r, std::string(item["t"] | ""), std::string(item["p"] | "")});
     }
   }
   scrollLines_ = 0;
@@ -670,7 +794,8 @@ void HermesChatActivity::saveHistory() const {
   for (const Message& message : messages_) {
     if (message.role == Role::Notice) continue;
     JsonObject item = items.add<JsonObject>();
-    item["r"] = message.role == Role::Agent ? 1 : 0;
+    item["r"] = message.role == Role::Agent ? 1 : message.role == Role::Book ? 2 : 0;
+    if (message.role == Role::Book) item["p"] = message.bookPath;
     if (message.text.size() > kMaxSavedMessageBytes) {
       std::string clipped = message.text.substr(0, kMaxSavedMessageBytes);
       popCodePoint(clipped);  // never split a code point
@@ -684,12 +809,14 @@ void HermesChatActivity::saveHistory() const {
 
 void HermesChatActivity::rebuildLines(const int width) {
   lines_.clear();
-  for (const Message& message : messages_) {
+  for (size_t index = 0; index < messages_.size(); ++index) {
+    const Message& message = messages_[index];
+    const auto id = static_cast<int16_t>(index);
     const char* label = message.role == Role::User    ? tr(STR_HERMES_YOU)
                         : message.role == Role::Agent ? tr(STR_HERMES_AGENT)
                                                       : nullptr;
-    if (!lines_.empty()) lines_.push_back(Line{std::string(), message.role, false});
-    if (label) lines_.push_back(Line{label, message.role, true});
+    if (!lines_.empty()) lines_.push_back(Line{std::string(), message.role, false, -1});
+    if (label) lines_.push_back(Line{label, message.role, true, id});
     size_t pos = 0;
     const std::string& text = message.text;
     while (pos <= text.size()) {
@@ -697,12 +824,13 @@ void HermesChatActivity::rebuildLines(const int width) {
       if (end == std::string::npos) end = text.size();
       const std::string paragraph = text.substr(pos, end - pos);
       if (paragraph.empty()) {
-        lines_.push_back(Line{std::string(), message.role, false});
+        lines_.push_back(Line{std::string(), message.role, false, id});
       } else {
-        const EpdFontFamily::Style style =
-            message.role == Role::Notice ? EpdFontFamily::ITALIC : EpdFontFamily::REGULAR;
+        const EpdFontFamily::Style style = message.role == Role::Notice ? EpdFontFamily::ITALIC
+                                           : message.role == Role::Book ? EpdFontFamily::BOLD
+                                                                        : EpdFontFamily::REGULAR;
         for (std::string& wrapped : renderer.wrappedText(kBodyFont, paragraph.c_str(), width, 400, style)) {
-          lines_.push_back(Line{std::move(wrapped), message.role, false});
+          lines_.push_back(Line{std::move(wrapped), message.role, false, id});
         }
       }
       if (end >= text.size()) break;
@@ -775,6 +903,8 @@ std::string HermesChatActivity::statusText() const {
       return buffer;
     case Phase::Transcribing:
       return tr(STR_HERMES_STATUS_TRANSCRIBING);
+    case Phase::Downloading:
+      return tr(STR_HERMES_STATUS_DOWNLOADING);
     case Phase::Idle:
       break;
   }
@@ -811,6 +941,7 @@ void HermesChatActivity::render(RenderLock&&) {
                                       l.transcript.height);
     // Walk up from the newest visible line, stacking mixed-height rows.
     int y = l.transcript.y + l.transcript.height;
+    bookTargets_.clear();
     for (int i = total - 1 - scrollLines_; i >= 0; --i) {
       const Line& line = lines_[static_cast<size_t>(i)];
       const int h = line.label ? labelHeight + 2 : bodyHeight;
@@ -820,9 +951,17 @@ void HermesChatActivity::render(RenderLock&&) {
       if (line.label) {
         renderer.drawText(kLabelFont, l.transcript.x, y, line.text.c_str(), true, EpdFontFamily::BOLD);
       } else {
-        const EpdFontFamily::Style style =
-            line.role == Role::Notice ? EpdFontFamily::ITALIC : EpdFontFamily::REGULAR;
+        const EpdFontFamily::Style style = line.role == Role::Notice ? EpdFontFamily::ITALIC
+                                           : line.role == Role::Book    ? EpdFontFamily::BOLD
+                                                                        : EpdFontFamily::REGULAR;
         renderer.drawText(kBodyFont, l.transcript.x, y, line.text.c_str(), true, style);
+        if (line.role == Role::Book) {
+          // Underline marks it as tappable (opens the book).
+          const int w = renderer.getTextWidth(kBodyFont, line.text.c_str(), style);
+          renderer.drawLine(l.transcript.x, y + h - 3, l.transcript.x + w, y + h - 3, 1, true);
+          bookTargets_.push_back(
+              TapTarget{static_cast<int16_t>(y), static_cast<int16_t>(y + h), line.message});
+        }
       }
     }
     if (total > visibleRows_) {
@@ -861,7 +1000,7 @@ void HermesChatActivity::render(RenderLock&&) {
     GUI.drawActionButton(renderer, l.buttons[i], actionLabel(action), active);
   }
 
-  const char* confirm = hermes::micAvailable() ? actionLabel(Action::Talk) : tr(STR_HERMES_TYPE);
+  const char* confirm = tr(STR_HERMES_TYPE);
   GUI.drawButtonHints(renderer, tr(STR_BACK), confirm, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }

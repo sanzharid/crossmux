@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 
 namespace hermes {
@@ -30,7 +32,86 @@ bool startsWith(const std::string& s, const size_t at, const char* prefix) {
   return s.compare(at, strlen(prefix), prefix) == 0;
 }
 
+constexpr const char* kBookExtensions[] = {".epub", ".xtch", ".xtc", ".txt", ".md"};
+
+// Extension of the URL path (before ?/#), lower-cased, or "" if not a book.
+std::string bookExtension(const std::string& url) {
+  const size_t end = url.find_first_of("?#");
+  std::string path = url.substr(0, end);
+  std::transform(path.begin(), path.end(), path.begin(), [](unsigned char c) { return std::tolower(c); });
+  for (const char* ext : kBookExtensions) {
+    const size_t n = strlen(ext);
+    if (path.size() > n && path.compare(path.size() - n, n, ext) == 0) return ext;
+  }
+  return {};
+}
+
+int hexValue(const char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
 }  // namespace
+
+std::vector<std::string> findBookLinks(const std::string& text, const size_t maxLinks) {
+  std::vector<std::string> links;
+  size_t pos = 0;
+  while (links.size() < maxLinks) {
+    const size_t http = text.find("http", pos);
+    if (http == std::string::npos) break;
+    pos = http + 4;
+    if (text.compare(http, 7, "http://") != 0 && text.compare(http, 8, "https://") != 0) continue;
+    size_t end = http;
+    while (end < text.size() && !std::isspace(static_cast<unsigned char>(text[end])) && text[end] != '"' &&
+           text[end] != '\'' && text[end] != '<' && text[end] != '>' && text[end] != ')' && text[end] != ']' &&
+           text[end] != '`') {
+      ++end;
+    }
+    std::string url = text.substr(http, end - http);
+    while (!url.empty() && std::strchr(".,;:!?*", url.back())) url.pop_back();  // sentence punctuation
+    pos = end;
+    if (bookExtension(url).empty()) continue;
+    if (std::find(links.begin(), links.end(), url) == links.end()) links.push_back(url);
+  }
+  return links;
+}
+
+std::string bookFileName(const std::string& url) {
+  const std::string ext = bookExtension(url);
+  std::string path = url.substr(0, url.find_first_of("?#"));
+  const size_t slash = path.find_last_of('/');
+  std::string raw = slash == std::string::npos ? path : path.substr(slash + 1);
+
+  std::string name;
+  name.reserve(raw.size());
+  for (size_t i = 0; i < raw.size(); ++i) {
+    char c = raw[i];
+    if (c == '%' && i + 2 < raw.size() && hexValue(raw[i + 1]) >= 0 && hexValue(raw[i + 2]) >= 0) {
+      c = static_cast<char>(hexValue(raw[i + 1]) * 16 + hexValue(raw[i + 2]));
+      i += 2;
+    } else if (c == '+') {
+      c = ' ';
+    }
+    const unsigned char u = static_cast<unsigned char>(c);
+    // Keep UTF-8 bytes (titles), ASCII word characters and a few separators.
+    const bool keep = u >= 0x80 || std::isalnum(u) || std::strchr(" ._-()[],'&", c);
+    name += keep && u >= 0x20 ? c : '_';
+  }
+  // Drop the extension (re-added below), trim separators, cap the stem.
+  if (!ext.empty() && name.size() >= ext.size()) name.resize(name.size() - ext.size());
+  while (!name.empty() && std::strchr(" ._", name.front())) name.erase(0, 1);
+  while (!name.empty() && std::strchr(" ._", name.back())) name.pop_back();
+  constexpr size_t kMaxStem = 80;
+  if (name.size() > kMaxStem) {
+    name.resize(kMaxStem);
+    while (!name.empty() && (static_cast<unsigned char>(name.back()) & 0xC0) == 0x80) name.pop_back();  // UTF-8 tail
+    if (!name.empty() && static_cast<unsigned char>(name.back()) >= 0xC0) name.pop_back();              // lead byte
+  }
+  if (name.empty()) name = "book";
+  return name + (ext.empty() ? ".epub" : ext);
+}
 
 std::string joinUrl(const std::string& base, const char* path) {
   if (base.find("/v1/") != std::string::npos) return base;

@@ -122,3 +122,24 @@ TEST(HermesProtocol, PlainTextFlattensMarkdown) {
 TEST(HermesProtocol, PlainTextKeepsSnakeCaseAndUtf8) {
   EXPECT_EQ(hermes::plainText("use my_var — café"), "use my_var — café");
 }
+
+TEST(HermesProtocol, FindsBookLinksInMarkdownAndProse) {
+  const std::string reply =
+      "Here you go: [Dune](http://hermes.local:8765/books/Dune%20-%20Frank%20Herbert.epub). "
+      "Also https://example.org/a/b/notes.TXT?token=1, and a page http://example.org/index.html "
+      "and again http://hermes.local:8765/books/Dune%20-%20Frank%20Herbert.epub.";
+  const auto links = hermes::findBookLinks(reply);
+  EXPECT_EQ(links.size(), 2u);
+  EXPECT_EQ(links[0], "http://hermes.local:8765/books/Dune%20-%20Frank%20Herbert.epub");
+  EXPECT_EQ(links[1], "https://example.org/a/b/notes.TXT?token=1");
+  EXPECT_EQ(hermes::findBookLinks("no links, httpx://x.epub, ftp://x.epub").size(), 0u);
+  EXPECT_EQ(hermes::findBookLinks("<http://h/a.xtch>")[0], "http://h/a.xtch");
+}
+
+TEST(HermesProtocol, BookFileNamesAreSdSafe) {
+  EXPECT_EQ(hermes::bookFileName("http://h/books/Dune%20-%20Frank%20Herbert.epub"), "Dune - Frank Herbert.epub");
+  EXPECT_EQ(hermes::bookFileName("https://e.org/a/notes.TXT?token=1"), "notes.txt");
+  EXPECT_EQ(hermes::bookFileName("http://h/x/%2e%2e%2Fetc%2Fpasswd.epub"), "etc_passwd.epub");  // no path traversal
+  EXPECT_EQ(hermes::bookFileName("http://h/.epub"), "book.epub");
+  EXPECT_EQ(hermes::bookFileName("http://h/caf%C3%A9.md"), "caf\xC3\xA9.md");
+}
