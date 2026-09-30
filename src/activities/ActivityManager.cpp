@@ -33,6 +33,7 @@
 #include "apps/standby/StandbyActivity.h"
 #include "apps/sudoku/SudokuMenuActivity.h"
 #include "apps/woodfish/WoodfishActivity.h"
+#include "apps/hermes/HermesChatActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -512,6 +513,8 @@ void ActivityManager::goToPixelSwitch() { replaceActivityWith<PixelSwitchActivit
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
 
 void ActivityManager::goToWoodfish() { replaceActivityWith<WoodfishActivity>(); }
+
+void ActivityManager::goToHermes() { replaceActivityWith<HermesChatActivity>(); }
 
 void ActivityManager::goToGame2048() { replaceActivityWith<Game2048Activity>(); }
 

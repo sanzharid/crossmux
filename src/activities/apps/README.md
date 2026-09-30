@@ -19,6 +19,7 @@ apps/
 ├── chinese-chess/             # hidden by default
 ├── minesweeper/
 ├── woodfish/                  # electronic woodfish with lazy SD checkpointing
+├── hermes/                    # chat with a Hermes Agent (keyboard, BLE keyboard, voice)
 └── avatar/
 ```
 
@@ -100,8 +101,8 @@ values, and keep conditional-app IDs outside their `#ifdef`. New bits default to
 Chess, Minesweeper, 2048, Ugly Avatar, Buddy, Sokoban, Pixel Switch, and Woodfish.
 Existing masks are preserved except for the one-time Buddy migration from catalog version 0.
 The menu, launcher, and App Visibility settings all read this same table; no `switch` or `buildItems()` is needed.
-The visibility mask is 32-bit. `Calculator = 15` and `Woodfish = 16` are stable;
-IDs 17 through 31 remain available.
+The visibility mask is 32-bit. `Calculator = 15`, `Woodfish = 16` and `Hermes = 17`
+are stable; IDs 18 through 31 remain available.
 
 ### 4. Add the i18n key and icon
 
@@ -196,6 +197,18 @@ validated transactionally before the old image is archived; JPEG uses the EPUB
 aspect-fit, dithering, streamed pixel-cache, and 4-level grayscale path without
 loading the full pixel cache into RAM. A selected JPEG is converted to a
 fit-without-cropping BMP before atomically replacing `/sleep.bmp`.
+
+## Hermes
+
+Chat client for a [Hermes Agent](https://hermes-agent.nousresearch.com/) API
+server; setup and protocol notes live in [docs/hermes-app.md](../../../docs/hermes-app.md).
+Network requests and microphone capture run on short-lived FreeRTOS tasks that
+share a reference-counted job with the activity, so leaving the app mid-request
+never frees memory a task still uses. Wi-Fi comes up per request when Bluetooth
+is enabled (the radios never run together) and stays up otherwise. The chat
+screen switches `MappedInputManager` into BLE text mode so keyboard characters
+reach the draft line instead of the button map. Voice needs `HERMES_HAS_MIC`
+(Sticky only) and records into PSRAM.
 
 ## Resource budget
 

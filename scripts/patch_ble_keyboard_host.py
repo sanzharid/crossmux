@@ -24,7 +24,23 @@ def write_compatible_source(target, source, env):
     output.write_text(original.replace(METHOD, "", 1), encoding="utf-8")
 
 
+def _node_path(node):
+    """Source path of a SCons node, or None when it cannot be determined."""
+    srcnode = getattr(node, "srcnode", None)
+    if srcnode is not None:
+        return srcnode().get_path().replace("\\", "/")
+    get_abspath = getattr(node, "get_abspath", None)
+    return get_abspath().replace("\\", "/") if get_abspath is not None else None
+
+
 def compile_compatible_host(build_env, node):
+    # See configure_nimble_psram.py: pioarduino's Windows middleware wrapper
+    # ignores the pattern and defers Object(), so filter and tolerate None.
+    # The deferred compile uses the original source with these flags; the shim
+    # (the part the link needs) still travels via -include.
+    path = _node_path(node)
+    if path is not None and not path.endswith("BleKeyboardHost/src/BleKeyboardHost.cpp"):
+        return node
     compatible = build_env.Command(
         "$BUILD_DIR/ble-compat/BleKeyboardHost.cpp", node, write_compatible_source
     )
@@ -42,7 +58,10 @@ def compile_compatible_host(build_env, node):
         # flag must travel with this library in both bootstrap and final links.
         CCFLAGS=build_env.get("CCFLAGS", [])
         + ["-include", shim] + config_flags,
-    )[0]
+    )
+    if not compiled:
+        return None
+    compiled = compiled[0]
     build_env.Depends(compiled, shim)
     if config:
         build_env.Depends(compiled, config)

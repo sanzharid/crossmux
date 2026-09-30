@@ -198,6 +198,14 @@ void MappedInputManager::pollBle() const {
 
   freeink::KeyEvent event;
   while (BleHid.popKey(event)) {
+    if (bleTextMode) {
+      bleActivityThisFrame = true;
+      const uint8_t next = static_cast<uint8_t>((bleTextHead + 1) % kBleTextQueueLen);
+      if (next == bleTextTail) continue;  // full: drop rather than block input polling
+      bleTextQueue[bleTextHead] = BleTextKey{event.ch, static_cast<uint8_t>(event.special), event.mods};
+      bleTextHead = next;
+      continue;
+    }
     uint8_t kind = 0xFF;
     uint8_t value = 0;
     if (!bleinput::encodeKey(event, kind, value)) continue;
@@ -532,6 +540,24 @@ void MappedInputManager::setBleCaptureMode(const bool enabled) {
     bleReleaseEdges.fill(false);
     blePendingEdges.fill(false);
   }
+}
+
+void MappedInputManager::setBleTextMode(const bool enabled) {
+  bleTextMode = enabled;
+  bleTextHead = 0;
+  bleTextTail = 0;
+  if (enabled) {
+    blePressEdges.fill(false);
+    bleReleaseEdges.fill(false);
+    blePendingEdges.fill(false);
+  }
+}
+
+bool MappedInputManager::popBleTextKey(BleTextKey& key) {
+  if (bleTextTail == bleTextHead) return false;
+  key = bleTextQueue[bleTextTail];
+  bleTextTail = static_cast<uint8_t>((bleTextTail + 1) % kBleTextQueueLen);
+  return true;
 }
 
 bool MappedInputManager::takeCapturedBleKey(uint8_t& kind, uint8_t& value) {

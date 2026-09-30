@@ -125,6 +125,17 @@ class MappedInputManager {
   void setBleCaptureMode(bool enabled);
   bool takeCapturedBleKey(uint8_t& kind, uint8_t& value);
 
+  // Text mode routes every BLE keyboard event to a small queue instead of the
+  // button map, so a text field can consume typed characters. `special` holds
+  // a freeink::SpecialKey value (0 = printable `ch`).
+  struct BleTextKey {
+    char ch = 0;
+    uint8_t special = 0;
+    uint8_t mods = 0;
+  };
+  void setBleTextMode(bool enabled);
+  bool popBleTextKey(BleTextKey& key);
+
   // True when the control axis is flipped relative to the physical buttons: always on touch boards,
   // or when button-only boards opt in, while the screen is currently INVERTED / LANDSCAPE_CCW.
   [[nodiscard]] bool isNavDirectionSwapped() const;
@@ -169,6 +180,11 @@ class MappedInputManager {
   mutable std::array<bool, kButtonCount> blePendingEdges{};
   mutable bool bleActivityThisFrame = false;
   bool bleCaptureMode = false;
+  bool bleTextMode = false;
+  static constexpr uint8_t kBleTextQueueLen = 32;
+  mutable std::array<BleTextKey, kBleTextQueueLen> bleTextQueue{};
+  mutable uint8_t bleTextHead = 0;
+  mutable uint8_t bleTextTail = 0;
   mutable bool bleHasCaptured = false;
   mutable uint8_t bleCapturedKind = 0xFF;
   mutable uint8_t bleCapturedValue = 0;

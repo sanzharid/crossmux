@@ -1,0 +1,243 @@
+#include "HermesJobs.h"
+
+#include <Arduino.h>
+#include <Logging.h>
+#include <SecureHttpClient.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <new>
+
+#if HERMES_HAS_MIC
+#include <Microphone.h>
+#endif
+
+namespace hermes {
+
+namespace {
+
+// TLS (https endpoints) runs wolfSSL on this stack; plain LAN http needs far less.
+constexpr uint32_t kNetTaskStackBytes = 12 * 1024;
+constexpr uint32_t kRecordTaskStackBytes = 4 * 1024;
+constexpr char kBoundary[] = "----CrossMuxHermesBoundary7f3a";
+constexpr size_t kMaxReplyBytes = 256 * 1024;
+
+std::atomic<uint8_t> activeRecorders{0};
+
+template <typename Job>
+void releaseJob(Job* job) {
+  if (job->refs.fetch_sub(1) == 1) delete job;
+}
+
+// Maps a finished HTTP exchange onto the job's error fields.
+void classify(NetJob& job, const int status, const ParseResult parsed) {
+  job.httpStatus = status;
+  if (status < 0) {
+    job.error = job.cancel ? JobError::Cancelled : JobError::Unreachable;
+  } else if (status >= 400) {
+    job.error = JobError::HttpStatus;
+  } else if (parsed == ParseResult::BadJson) {
+    job.error = JobError::BadReply;
+  } else if (parsed == ParseResult::NoText) {
+    job.error = JobError::NoText;
+  }
+  if (job.error != JobError::None) job.text.clear();
+}
+
+void runChat(NetJob& job, freeink::SecureHttpClient& http) {
+  http.addHeader("Content-Type", "application/json");
+  if (job.style == ApiStyle::ChatCompletions && !job.sessionId.empty()) {
+    http.addHeader("X-Hermes-Session-Id", job.sessionId);
+  }
+  std::string reply;
+  const int status = http.sendRequest(
+      "POST", reinterpret_cast<const uint8_t*>(job.body.data()), job.body.size(),
+      [&reply](const uint8_t* data, const size_t len) {
+        if (reply.size() + len > kMaxReplyBytes) return false;
+        reply.append(reinterpret_cast<const char*>(data), len);
+        return true;
+      },
+      [&job] { return job.cancel.load(); });
+  const ParseResult parsed =
+      status < 0 ? ParseResult::NoText : parseReply(reply, job.style, job.text, job.serverMessage);
+  classify(job, status, parsed);
+}
+
+void runTranscribe(NetJob& job, freeink::SecureHttpClient& http) {
+  const std::string head = multipartHead(kBoundary, job.sttModel, job.sttLanguage);
+  const std::string tail = multipartTail(kBoundary);
+  const size_t total = head.size() + job.audioBytes + tail.size();
+  // Up to ~3.8 MB for a 120 s clip: only PSRAM can hold it; the WAV buffer is
+  // released right after the copy so the peak is two clips, not three.
+  memory::ByteBuffer body = memory::makePsramByteBufferUninitializedNoThrow(total);
+  if (!body) {
+    LOG_ERR("HERMES", "OOM: upload body (%u bytes)", static_cast<unsigned>(total));
+    job.error = JobError::NoMemory;
+    return;
+  }
+  memcpy(body.get(), head.data(), head.size());
+  memcpy(body.get() + head.size(), job.audio.get(), job.audioBytes);
+  memcpy(body.get() + head.size() + job.audioBytes, tail.data(), tail.size());
+  job.audio.reset();
+
+  http.addHeader("Content-Type", std::string("multipart/form-data; boundary=") + kBoundary);
+  std::string reply;
+  const int status = http.sendRequest(
+      "POST", body.get(), total,
+      [&reply](const uint8_t* data, const size_t len) {
+        if (reply.size() + len > kMaxReplyBytes) return false;
+        reply.append(reinterpret_cast<const char*>(data), len);
+        return true;
+      },
+      [&job] { return job.cancel.load(); });
+  const ParseResult parsed = status < 0 ? ParseResult::NoText : parseTranscript(reply, job.text, job.serverMessage);
+  classify(job, status, parsed);
+}
+
+void netTask(void* param) {
+  auto* job = static_cast<NetJob*>(param);
+  {
+    freeink::SecureHttpClient http;
+    http.setInsecure();  // LAN servers commonly use self-signed certs
+    http.setTimeout(job->timeoutMs);
+    http.setFollowRedirects(2);
+    if (!http.begin(job->url)) {
+      job->error = JobError::InvalidUrl;
+    } else {
+      if (!job->apiKey.empty()) http.addHeader("Authorization", "Bearer " + job->apiKey);
+      http.addHeader("Accept", "application/json");
+      if (job->kind == NetJob::Kind::Chat) {
+        runChat(*job, http);
+      } else {
+        runTranscribe(*job, http);
+      }
+      http.end();
+    }
+  }
+  LOG_INF("HERMES", "job %u done: http=%d err=%u", static_cast<unsigned>(job->kind), job->httpStatus,
+          static_cast<unsigned>(job->error));
+  job->state = job->error == JobError::None ? JobState::Done : JobState::Failed;
+  job->release();
+  vTaskDelete(nullptr);
+}
+
+#if HERMES_HAS_MIC
+void recordTask(void* param) {
+  auto* job = static_cast<RecordJob*>(param);
+  activeRecorders.fetch_add(1);
+  freeink::Microphone mic;
+  if (!mic.begin(job->sampleRate)) {
+    job->error = JobError::MicUnavailable;
+  } else {
+    // Discard ~100 ms while the PDM decimation filter settles (start-up pop).
+    int16_t scratch[256];
+    for (int i = 0; i < 6; ++i) mic.read(scratch, 256, 50);
+
+    auto* pcm = reinterpret_cast<int16_t*>(job->buffer.get() + kWavHeaderBytes);
+    size_t count = 0;
+    while (!job->stop && count < job->capacitySamples) {
+      const size_t want = std::min<size_t>(512, job->capacitySamples - count);
+      const int got = mic.read(pcm + count, want, 100);
+      if (got < 0) {
+        job->error = JobError::MicFailed;
+        break;
+      }
+      int peak = 0;
+      for (int i = 0; i < got; ++i) peak = std::max(peak, std::abs(static_cast<int>(pcm[count + i])));
+      count += static_cast<size_t>(got);
+      job->samples = count;
+      job->level = static_cast<uint16_t>(std::min(peak, 32767));
+    }
+    mic.end();
+  }
+  if (job->error != JobError::None) LOG_ERR("HERMES", "mic error %u", static_cast<unsigned>(job->error));
+  LOG_INF("HERMES", "recorded %u samples", static_cast<unsigned>(job->samples.load()));
+  job->state = job->error == JobError::None ? JobState::Done : JobState::Failed;
+  job->release();
+  activeRecorders.fetch_sub(1);
+  vTaskDelete(nullptr);
+}
+#endif
+
+}  // namespace
+
+NetJob* NetJob::create() { return new (std::nothrow) NetJob(); }
+
+void NetJob::release() { releaseJob(this); }
+
+bool startNetJob(NetJob* job) {
+  job->refs.fetch_add(1);
+  if (xTaskCreatePinnedToCore(&netTask, "HermesNet", kNetTaskStackBytes, job, 1, nullptr, 0) != pdPASS) {
+    job->refs.fetch_sub(1);
+    LOG_ERR("HERMES", "Failed to start network task");
+    return false;
+  }
+  return true;
+}
+
+RecordJob* RecordJob::create(const uint8_t maxSeconds) {
+  auto* job = new (std::nothrow) RecordJob();
+  if (!job) return nullptr;
+  job->capacitySamples = static_cast<size_t>(job->sampleRate) * maxSeconds;
+  const size_t bytes = kWavHeaderBytes + job->capacitySamples * sizeof(int16_t);
+  job->buffer = memory::makePsramByteBufferUninitializedNoThrow(bytes);
+  if (!job->buffer) {
+    LOG_ERR("HERMES", "OOM: recording buffer (%u bytes)", static_cast<unsigned>(bytes));
+    delete job;
+    return nullptr;
+  }
+  return job;
+}
+
+void RecordJob::release() { releaseJob(this); }
+
+size_t RecordJob::finalizeWav() {
+  const size_t count = samples.load();
+  if (count == 0) return 0;
+  auto* pcm = reinterpret_cast<int16_t*>(buffer.get() + kWavHeaderBytes);
+
+  // Remove DC offset, then normalize to ~-3 dBFS (capped at 16x) — the
+  // Sticky's PDM mic is quiet at arm's length and STT does better with level.
+  int64_t sum = 0;
+  for (size_t i = 0; i < count; ++i) sum += pcm[i];
+  const int32_t dc = static_cast<int32_t>(sum / static_cast<int64_t>(count));
+  int32_t peak = 1;
+  for (size_t i = 0; i < count; ++i) peak = std::max(peak, std::abs(static_cast<int32_t>(pcm[i]) - dc));
+  const int32_t gainQ8 = std::min<int32_t>(16 * 256, (23000 * 256) / peak);
+  for (size_t i = 0; i < count; ++i) {
+    const int32_t v = ((static_cast<int32_t>(pcm[i]) - dc) * gainQ8) >> 8;
+    pcm[i] = static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, v)));
+  }
+
+  const auto pcmBytes = static_cast<uint32_t>(count * sizeof(int16_t));
+  writeWavHeader(buffer.get(), pcmBytes, sampleRate);
+  return kWavHeaderBytes + pcmBytes;
+}
+
+bool micAvailable() {
+#if HERMES_HAS_MIC
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool micBusy() { return activeRecorders.load() != 0; }
+
+bool startRecordJob(RecordJob* job) {
+#if HERMES_HAS_MIC
+  job->refs.fetch_add(1);
+  if (xTaskCreatePinnedToCore(&recordTask, "HermesMic", kRecordTaskStackBytes, job, 2, nullptr, 0) != pdPASS) {
+    job->refs.fetch_sub(1);
+    LOG_ERR("HERMES", "Failed to start recording task");
+    return false;
+  }
+  return true;
+#else
+  (void)job;
+  return false;
+#endif
+}
+
+}  // namespace hermes
