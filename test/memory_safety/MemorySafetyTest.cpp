@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "Epub/converters/ImageDimsProbe.h"
-#include "EyeShape.h"
 
 extern "C" uint32_t uzlib_adler32(const void*, unsigned int, const uint32_t previous) { return previous; }
 extern "C" uint32_t uzlib_crc32(const void*, unsigned int, const uint32_t previous) { return previous; }
@@ -180,32 +179,6 @@ TEST(BuildScratch, ClaimIsExclusiveAndReusable) {
   buildscratch::release(storage.data());
   buildscratch::reclaim();
   EXPECT_EQ(buildscratch::claim(1), nullptr);
-}
-
-TEST(AvatarMemorySafety, EyeGenerationIsDeterministicAndBounded) {
-  avatar::PointF upperA[avatar::MAX_EYELID_POINTS]{};
-  avatar::PointF lowerA[avatar::MAX_EYELID_POINTS]{};
-  avatar::PointF upperB[avatar::MAX_EYELID_POINTS]{};
-  avatar::PointF lowerB[avatar::MAX_EYELID_POINTS]{};
-  avatar::Polyline aUpper{upperA, 0, avatar::MAX_EYELID_POINTS, 1, false};
-  avatar::Polyline aLower{lowerA, 0, avatar::MAX_EYELID_POINTS, 1, false};
-  avatar::Polyline bUpper{upperB, 0, avatar::MAX_EYELID_POINTS, 1, false};
-  avatar::Polyline bLower{lowerB, 0, avatar::MAX_EYELID_POINTS, 1, false};
-  avatar::Rng rngA(12345);
-  avatar::Rng rngB(12345);
-  const auto paramsA = avatar::generateEyeParameters(rngA, 80.0f);
-  const auto paramsB = avatar::generateEyeParameters(rngB, 80.0f);
-  avatar::generateOneEye(rngA, paramsA, 80.0f, aUpper, aLower);
-  avatar::generateOneEye(rngB, paramsB, 80.0f, bUpper, bLower);
-
-  ASSERT_EQ(aUpper.count, avatar::MAX_EYELID_POINTS);
-  ASSERT_EQ(aLower.count, avatar::MAX_EYELID_POINTS);
-  for (size_t i = 0; i < avatar::MAX_EYELID_POINTS; ++i) {
-    EXPECT_FLOAT_EQ(aUpper.points[i].x, bUpper.points[i].x);
-    EXPECT_FLOAT_EQ(aUpper.points[i].y, bUpper.points[i].y);
-    EXPECT_FLOAT_EQ(aLower.points[i].x, bLower.points[i].x);
-    EXPECT_FLOAT_EQ(aLower.points[i].y, bLower.points[i].y);
-  }
 }
 
 }  // namespace

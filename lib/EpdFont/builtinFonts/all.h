@@ -3,7 +3,6 @@
 // Unified firmware: compact international UI fonts are primary, with the
 // built-in Simplified-Chinese subsets registered as missing-glyph fallbacks.
 // Broad reader families and larger CJK sizes are supplied as .cpfont files.
-#include <builtinFonts/chinese_chess_16.h>
 #include <builtinFonts/notosans_8_regular.h>
 #include <builtinFonts/notosans_cjk_8.h>
 #include <builtinFonts/notosans_cjk_10.h>

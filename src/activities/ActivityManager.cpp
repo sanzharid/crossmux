@@ -15,26 +15,16 @@
 #include "apps/2048/Game2048Activity.h"
 #include "apps/AppsMenuActivity.h"
 #include "apps/airpage/AirPageActivity.h"
-#include "apps/avatar/UglyAvatarActivity.h"
-#include "apps/buddy/BuddyActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
-#include "apps/sokoban/SokobanGameActivity.h"
-#ifdef ENABLE_CHINESE_VERSION
-#include "apps/chinese-chess/ChineseChessMenuActivity.h"
-#endif
-#ifdef ENABLE_CHINESE_VERSION
-#include "apps/weread/WeReadActivity.h"
-#endif
 #include "apps/gomoku/GomokuMenuActivity.h"
 #include "apps/minesweeper/MinesweeperMenuActivity.h"
-#include "apps/pixel-switch/PixelSwitchActivity.h"
 #include "apps/reading-stats/ReadingStatsActivity.h"
 #include "apps/reading-stats/ReadingStatsMenuActivity.h"
 #include "apps/standby/StandbyActivity.h"
 #include "apps/sudoku/SudokuMenuActivity.h"
-#include "apps/woodfish/WoodfishActivity.h"
 #include "apps/hermes/HermesChatActivity.h"
 #include "apps/s3xy/S3xyActivity.h"
+#include "apps/sysmon/SystemMonitorActivity.h"
 #include "lock/LockScreenActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -252,7 +242,7 @@ void ActivityManager::loop() {
       // Drop any one-shot tap/release edge events the outgoing activity already
       // consumed this frame. The SDK's InputManager clears these in update(),
       // but a pushActivity runs mid-frame; without this, the incoming activity
-      // re-reads the same tap and double-activates (observed crash with WeRead:
+      // re-reads the same tap and double-activates (observed crash with an app launch:
       // the second activation hit WiFi/render-lock interleaving and tripped
       // FreeRTOS xTaskPriorityDisinherit on the rendering mutex).
 #if !defined(SIMULATOR)
@@ -424,8 +414,6 @@ void ActivityManager::goToUsbDrive() {
 
 void ActivityManager::goToSettings() { replaceActivityWith<SettingsActivity>(); }
 
-void ActivityManager::goToUglyAvatar() { replaceActivityWith<UglyAvatarActivity>(); }
-
 void ActivityManager::goToFileBrowser(std::string path) { replaceActivityWith<FileBrowserActivity>(std::move(path)); }
 
 void ActivityManager::goToRecentBooks() { replaceActivityWith<RecentBooksActivity>(); }
@@ -534,21 +522,17 @@ void ActivityManager::goToReadingStats() { replaceActivityWith<ReadingStatsActiv
 
 void ActivityManager::goToSudoku() { replaceActivityWith<SudokuMenuActivity>(); }
 
-void ActivityManager::goToSokoban() { replaceActivityWith<SokobanGameActivity>(); }
-
 void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
 
 void ActivityManager::goToMinesweeper() { replaceActivityWith<MinesweeperMenuActivity>(); }
 
-void ActivityManager::goToPixelSwitch() { replaceActivityWith<PixelSwitchActivity>(); }
-
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
-
-void ActivityManager::goToWoodfish() { replaceActivityWith<WoodfishActivity>(); }
 
 void ActivityManager::goToHermes() { replaceActivityWith<HermesChatActivity>(); }
 
 void ActivityManager::goToS3xy() { replaceActivityWith<S3xyActivity>(); }
+
+void ActivityManager::goToSystemMonitor() { replaceActivityWith<SystemMonitorActivity>(); }
 
 void ActivityManager::requestLock() { lockRequested_ = true; }
 
@@ -577,17 +561,7 @@ void ActivityManager::goToGame2048() { replaceActivityWith<Game2048Activity>(); 
 
 void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
 
-void ActivityManager::goToBuddy() { replaceActivityWith<BuddyActivity>(); }
-
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
-
-#ifdef ENABLE_CHINESE_VERSION
-void ActivityManager::goToChineseChess() { replaceActivityWith<ChineseChessMenuActivity>(); }
-#endif
-
-#ifdef ENABLE_CHINESE_VERSION
-void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
-#endif
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   if (pendingActivity) {

@@ -1,6 +1,5 @@
 add_executable(memory_safety_tests
   MemorySafetyTest.cpp
-  ${REPO_ROOT}/lib/AvatarGen/EyeShape.cpp
   ${REPO_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp
   ${REPO_ROOT}/lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp
   ${REPO_ROOT}/lib/InflateReader/InflateReader.cpp
@@ -11,7 +10,6 @@ add_executable(memory_safety_tests
 target_include_directories(memory_safety_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${crosspoint_simulator_SOURCE_DIR}/src
-  ${REPO_ROOT}/lib/AvatarGen
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/InflateReader
   ${REPO_ROOT}/lib/Memory

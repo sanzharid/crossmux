@@ -13,8 +13,8 @@ and on-demand services are also part of this fork.
 - **Lightweight apps and customization:** games, small tools, AirPage image
   delivery, themes, clocks, and almanac faces suited to e-ink interaction.
 - **On-demand connectivity:** file transfer, OPDS, Calibre, progress sync,
-  WeRead, content downloads, and OTA. Existing foreground live modes are
-  supported; their connection lifetime and idle-sleep behavior must be explicit.
+  content downloads, and OTA. Existing foreground live modes are supported;
+  their connection lifetime and idle-sleep behavior must be explicit.
 - **Device support and engineering:** HAL/SDK integration, simulators, tests,
   and changes that improve memory use, Flash headroom, stability, or maintenance.
 

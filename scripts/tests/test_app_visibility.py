@@ -18,9 +18,9 @@ class AppVisibilityTest(unittest.TestCase):
         apply = settings.split('void CrossPointSettings::applyLanguageSelection', 1)[1]
         apply = 'void CrossPointSettings::applyLanguageSelection' + apply.split('\n}', 1)[0] + '\n}'
         fields = header.split('  static constexpr uint8_t APPS_CATALOG_VERSION', 1)[1]
-        fields = '  static constexpr uint8_t APPS_CATALOG_VERSION' + fields.split('  uint8_t buddyClaimed', 1)[0]
+        fields = '  static constexpr uint8_t APPS_CATALOG_VERSION' + fields.split('  // Image rendering mode', 1)[0]
         migration = settings.split('  hiddenAppsMask =', 1)[1]
-        migration = '  hiddenAppsMask =' + migration.split('  buddyClaimed =', 1)[0]
+        migration = '  hiddenAppsMask =' + migration.split('\n\n', 1)[0] + '\n'
         transaction = selector.split('  const uint8_t previousLanguage', 1)[1]
         transaction = '  const uint8_t previousLanguage' + transaction.split('    LOG_ERR("LANG"', 1)[0]
         source = r'''
@@ -67,21 +67,23 @@ TRANSACTION
     }
 }
 int main() {
-    constexpr AppId ids[] = {AppId::ReadingStats, AppId::WeRead, AppId::Sudoku, AppId::Gomoku,
-        AppId::ChineseChess, AppId::Minesweeper, AppId::Game2048, AppId::UglyAvatar,
-        AppId::Standby, AppId::AirPage, AppId::Buddy, AppId::Sokoban, AppId::PixelSwitch,
-        AppId::FileTransfer, AppId::OpdsBrowser, AppId::Calculator, AppId::Woodfish};
-    for (unsigned i = 0; i < 17; ++i) assert(static_cast<unsigned>(ids[i]) == i);
-    constexpr uint32_t expected = (1u<<4)|(1u<<5)|(1u<<6)|(1u<<7)|(1u<<10)|(1u<<11)|(1u<<12)|(1u<<16);
+    constexpr AppId ids[] = {AppId::ReadingStats, AppId::Retired1, AppId::Sudoku, AppId::Gomoku,
+        AppId::Retired4, AppId::Minesweeper, AppId::Game2048, AppId::Retired7,
+        AppId::Standby, AppId::AirPage, AppId::Retired10, AppId::Retired11, AppId::Retired12,
+        AppId::FileTransfer, AppId::OpdsBrowser, AppId::Calculator, AppId::Retired16,
+        AppId::Hermes, AppId::S3xy, AppId::SystemMonitor};
+    for (unsigned i = 0; i < 20; ++i) assert(static_cast<unsigned>(ids[i]) == i);
+    static_assert(static_cast<unsigned>(AppId::Count) == 20);
+    constexpr uint32_t expected = (1u<<5)|(1u<<6);
     static_assert(DEFAULT_HIDDEN_APPS_MASK == expected);
     assert(SETTINGS.hiddenAppsMask == expected);
     SETTINGS.load({{std::nullopt}, {1}});
     assert(SETTINGS.hiddenAppsMask == expected);
-    for (uint32_t mask : {0u, UINT32_MAX, expected, appBit(AppId::WeRead), 0x80000000u}) {
+    for (uint32_t mask : {0u, UINT32_MAX, expected, appBit(AppId::Gomoku), 0x80000000u}) {
         SETTINGS.load({{mask}, {1}});
         assert(SETTINGS.hiddenAppsMask == mask);
         SETTINGS.load({{mask}, {std::nullopt}});
-        assert(SETTINGS.hiddenAppsMask == (mask | appBit(AppId::Buddy)));
+        assert(SETTINGS.hiddenAppsMask == mask);
         assert(SETTINGS.needsResave && SETTINGS.appsCatalogVersion == 1);
         SETTINGS.load({{mask}, {SETTINGS.appsCatalogVersion}});
         assert(SETTINGS.hiddenAppsMask == mask);
@@ -97,16 +99,16 @@ int main() {
     }
     for (Mode mode : {Mode::Initial, Mode::Settings, Mode::Upgrade}) {
         SETTINGS = Settings{};
-        SETTINGS.hiddenAppsMask = appBit(AppId::WeRead);
+        SETTINGS.hiddenAppsMask = appBit(AppId::Gomoku);
         SETTINGS.saveOk = false;
         selectLanguage(1, mode);
         assert(SETTINGS.language == 0 && SETTINGS.contentProfile == Settings::ContentProfile::Global);
         assert(SETTINGS.clockUtcOffsetQ == 48 && SETTINGS.fontFamily == 2 && SETTINGS.fontPointSize == 16);
-        assert(SETTINGS.onboardingVersion == 0 && SETTINGS.hiddenAppsMask == appBit(AppId::WeRead));
+        assert(SETTINGS.onboardingVersion == 0 && SETTINGS.hiddenAppsMask == appBit(AppId::Gomoku));
         SETTINGS.saveOk = true;
         selectLanguage(1, mode);
         assert(SETTINGS.language == 1 && SETTINGS.contentProfile == Settings::ContentProfile::China);
-        assert(SETTINGS.hiddenAppsMask == appBit(AppId::WeRead));
+        assert(SETTINGS.hiddenAppsMask == appBit(AppId::Gomoku));
     }
 }
 '''

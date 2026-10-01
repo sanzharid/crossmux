@@ -12,13 +12,10 @@
 
 - **阅读与书库**：EPUB、TXT、XTC/XTCH 和图片，章节导航、书签、词典、自定义字体、阅读背景，以及 KOReader 进度同步。
 - **无线功能**：浏览器传书与设置、Calibre 无线连接、OPDS 下载、WebDAV 和设备 OTA 更新。
-- **Apps 应用中心**：数独、五子棋、中国象棋、扫雷、2048、电子木鱼、Ugly Avatar 等轻量游戏与工具。[应用说明](./src/activities/apps/README.md)。
+- **Apps 应用中心**：数独、五子棋、扫雷、2048、计算器等轻量游戏与工具。[应用说明](./src/activities/apps/README.md)。
 - **AirPage**：扫码上传内容，通过手动刷新或前台实时投送显示 BMP/JPEG 图片，也可将图片设为休眠画面。[操作与联网行为](./src/activities/apps/README.md#airpage)。
-- **微信读书**：扫码登录、浏览书架、下载 EPUB 离线阅读和同步进度，在 China 内容区显示。[微信读书说明](./src/activities/apps/weread/README.md)。
 - **阅读分析与待机**：阅读统计、热力图、档案与成就，以及时钟和老黄历表盘。[阅读分析说明](./src/activities/apps/reading-stats/README.md)。
 - **语言与开发**：每个硬件目标使用包含 33 种 UI 语言的统一固件，并提供桌面模拟器辅助开发。
-
-> **微信读书安全提示**：非公开 Web 协议可能变化。真机传输经过加密，但客户端不验证服务器证书与主机名，请仅在可信网络中使用。原生模拟器通过主机信任库验证证书，详见[传输说明](./docs/engineering/chinese-build.md#weread-transport)。
 
 ## 设备与发布渠道
 
@@ -54,7 +51,7 @@ Metalio E-Ink 4 使用 `metalio-eink4` Nightly 安装包，型号与板型标签
 
 ## 中文字体与内容区
 
-每个硬件目标只构建一个统一语言固件。简体中文选择 China 内容区（`crossmux.cn`），其它 UI 语言选择 Global 内容区（`crossmux.com`）。切换 UI 语言会同步内容区和区域应用，包括微信读书与中国象棋。
+每个硬件目标只构建一个统一语言固件。简体中文选择 China 内容区（`crossmux.cn`），其它 UI 语言选择 Global 内容区（`crossmux.com`）。切换 UI 语言会同步内容区。
 
 UI 内置精简的 8/10/12pt 简体中文回退字体。内置阅读字体选项共用 12pt 离线回退；完整字族、其它字号、粗斜体和更广的 Unicode 覆盖使用 SD 卡 `.cpfont` 字体。内嵌字库是子集，生僻字或繁体字可能需要覆盖相应字形的 SD 字体。
 

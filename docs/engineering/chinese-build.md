@@ -14,7 +14,7 @@ The startup guide and later UI-language changes apply the same rule.
 | UI fonts | International 8/10/12pt faces are primary; Simplified-Chinese subsets remain the built-in fallback. PSRAM-equipped S3 devices additionally use the selected SD family at matching sizes for multilingual missing glyphs. |
 | Reader fonts | Only the 12pt CJK subset is an offline fallback. Complete families and other sizes use the existing `.cpfont` download/SD loader, one reader size resident at a time, plus optional S3 UI sizes. |
 | EPUB/TXT | Unicode CJK parsing, line breaking and missing-glyph detection are always compiled and trigger from text content. |
-| Apps | App visibility is independent of language and content profile. WeRead is visible by default in every language; Chinese Chess is hidden by default. Language changes preserve app visibility choices. |
+| Apps | App visibility is independent of language and content profile. Language changes preserve app visibility choices. |
 | Services | China uses `crossmux.cn`, OTA variant `cn`, and China NTP servers; Global uses `crossmux.com`, variant `global`, and international NTP servers. Initial onboarding alone sets the default UTC offset. |
 
 **S3 UI fallback residency**
@@ -118,81 +118,6 @@ IRAM mappings.
 The active size strategy is to embed only 8/10/12pt CJK subsets and externalize
 large reading faces to `.cpfont`. This removes flash data without introducing a
 decompression buffer or a new long-lived heap allocation.
-
-## WeRead transport
-
-The root headers below `src/activities/apps/weread/` are compile-time-only
-selection points. The public build uses the UI in `webapi/` with
-`lib/WeReadWebApi`; there is no runtime backend switch.
-
-WeRead owns its transport in `lib/WeReadWebApi/src/WeReadHttpClient.*`;
-the public `HttpDownloader` has no WeRead-specific session, Cookie, or protocol
-logic. On device, the client uses wolfSSL through `freeink::SecureClient`, a
-caller-owned 4 KB work buffer, and one best-effort persistent connection.
-Chapter images are streamed to SD and scheduled in batches by HTTPS host, so
-requests for the same host reuse that single connection. Redirects may change
-the active host, but only `weread.qq.com` and its subdomains receive the WeRead
-Cookie. The connection closes before EPUB packaging, and also closes early
-when free heap falls below 20 KB or the largest block falls below 8 KB.
-
-The pinned SDK owns the maximum-fragment request: `HAVE_MAX_FRAGMENT` remains
-enabled and `SecureClient` requests 2 KiB before the handshake. There is no
-application SNI wrapper. This preserves the effective request on the original
-SDK path; it does not prove that the peer accepted it. HTTP buffer sizes do not
-establish TLS record sizes. Cipher suites and hardware acceleration are unchanged.
-
-Chapter shard merging and Base64 input reuse the Operation's 4 KiB buffer instead
-of allocating a temporary 1 KiB buffer per chapter; Base64 output writes remain
-unchanged. Downloads remain serial on C3 and S3. UI stage numbers and labels share
-one mapping and drawing path; chapter progress refresh requests use 5% buckets,
-while images retain 10% buckets. Unknown totals show waiting text rather than a
-percentage. DEBUG-only diagnostic sampling is compiled out at lower log levels.
-Timing includes synchronous SD I/O and must not be interpreted as pure CPU work.
-See the [WeRead README](../../src/activities/apps/weread/README.md) for measurement
-boundaries, cold-cache test records, and unverified hardware checks.
-
-Device requests call `setInsecure()`: traffic is encrypted, but the CA and host
-identity are not verified. This makes session credentials and downloaded
-content vulnerable to a man-in-the-middle attacker. The native simulator takes
-a different path, `WeReadHttpClient -> simulator esp_http_client shim -> curl`,
-and uses the host trust store for certificate verification. WeRead uses an
-unofficial Web protocol and may stop working when the service changes.
-
-## WeRead progress sync
-
-The reader exposes one **Sync Progress** menu action. When the current EPUB path
-exactly matches a standard book in `shelf.bin`, the action uses WeRead; all other
-EPUBs continue to use KOReader. WeRead public-account books (`MP_WXS_`), moved
-files, and renamed files are intentionally treated as ordinary EPUBs. The
-existing long-press KOReader shortcut is unchanged.
-
-Manual WeRead sync starts with the saved Cookie and renews it only after an
-authentication failure. Newly generated WeRead chapters retain invisible
-raw-XHTML UTF-16 source anchors. These map the local page's visible-text offset
-to WeRead's native `chapterUid + chapterOffset` coordinate without clamping the
-offset to the `WRT2` word count; the inverse mapping restores a remote offset
-through the reader's existing pagination LUT. Older generated books without
-anchors retain the visible-offset approximation, and other EPUBs fall back to
-the whole-book percentage derived from `WRT2` word counts. Different canonical
-positions show the direction selector. A local upload uses an enter/report pair
-and includes the whole seconds recorded by the local reading session that ended
-when manual sync was opened. When the remote position is selected, its exact
-chapter and offset are reported before being applied locally, so reporting time
-cannot move cloud progress backwards. Upload is accepted only after a read-back
-verifies the chapter and offset. A timed report is not automatically repeated
-after an ambiguous network failure; the current sync screen retains it for an
-explicit Retry, but no pending time is persisted after leaving the screen. An
-expired session directs the user back to **Apps → WeRead** to sign in; it does
-not open a QR flow from the reader.
-
-For a new standard-book cache, the downloader fetches cloud progress after the
-`WRT2` catalog and before any chapter or image. This request is best effort:
-network, authentication, and protocol failures are logged but do not block the
-book download. After the EPUB is atomically replaced, a successful result is
-stored as the one-shot `WRP1` initial position. The reader consumes it only when
-there is no valid local `progress.bin`; an existing local position always wins.
-Public-account books skip this prefetch. See [file-formats.md](../file-formats.md)
-for the `WRT2` and `WRP1` layouts and migration rules.
 
 ## Regenerating the CJK fonts
 

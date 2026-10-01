@@ -2,7 +2,7 @@
 
 The `apps/` directory holds all non-reader sub-applications shipped on CrossMux. They use the Apps launcher (`AppsMenuActivity`) and the conventions below; the main-tab and home navigation expose that launcher.
 
-The directory groups app implementations such as games, tools, reading analytics, and WeRead. The launcher also links to core workflows such as file transfer and OPDS; appearing in Apps does not require moving those implementations into this directory.
+The directory groups app implementations such as games, tools, and reading analytics. The launcher also links to core workflows such as file transfer and OPDS; appearing in Apps does not require moving those implementations into this directory.
 
 ---
 
@@ -16,14 +16,12 @@ apps/
 ├── airpage/                    # cloud image display app
 ├── sudoku/                    # one subdirectory per app, files keep the app-name prefix
 ├── gomoku/
-├── chinese-chess/             # hidden by default
 ├── minesweeper/
-├── woodfish/                  # electronic woodfish with lazy SD checkpointing
-├── hermes/                    # chat with a Hermes Agent (keyboard, BLE keyboard, voice)
-└── avatar/
+├── calculator/
+└── hermes/                    # chat with a Hermes Agent (keyboard, BLE keyboard, voice)
 ```
 
-**Why the `Game*` prefix for `GameUi` and `GameSaveDebouncer`** — these helpers carry save-state and game-board semantics. They are used by Sudoku, Gomoku, and Minesweeper, not by Ugly Avatar (which is a single-shot generator). The name reflects what they actually do; do not rename them to `App*`.
+**Why the `Game*` prefix for `GameUi` and `GameSaveDebouncer`** — these helpers carry save-state and game-board semantics. They are used by Sudoku, Gomoku, and Minesweeper, not by Calculator (which keeps no save state). The name reflects what they actually do; do not rename them to `App*`.
 
 **Why nested rather than flat** — apps share the "Apps" launcher concept and should be groupable. Reader and Settings are top-level features, so they sit flat at `activities/<feature>/`. This is a deliberate structural difference, not an inconsistency.
 
@@ -80,16 +78,16 @@ enum class AppId : uint8_t {
   Sudoku = 2,
   Gomoku = 3,
   Minesweeper = 5,
-  UglyAvatar = 7,
-  MyApp = 17,  // example: use the next unused bit ID in the current catalog
-  Count = 18,
+  Calculator = 15,
+  MyApp = 20,  // example: use the next unused bit ID in the current catalog
+  Count = 21,
 };
 
 constexpr AppEntry kAppEntries[] = {
     {AppId::Sudoku,      StrId::STR_SUDOKU_TITLE,      UIIcon::Sudoku,      &ActivityManager::goToSudoku},
     {AppId::Gomoku,      StrId::STR_GOMOKU_TITLE,      UIIcon::Gomoku,      &ActivityManager::goToGomoku},
     {AppId::Minesweeper, StrId::STR_MINESWEEPER_TITLE, UIIcon::Minesweeper, &ActivityManager::goToMinesweeper},
-    {AppId::UglyAvatar,  StrId::STR_UGLY_AVATAR,       UIIcon::Avatar,      &ActivityManager::goToUglyAvatar},
+    {AppId::Calculator,  StrId::STR_CALCULATOR_TITLE,  UIIcon::Calculator,  &ActivityManager::goToCalculator},
     {AppId::MyApp,       StrId::STR_MYAPP_TITLE,       UIIcon::MyApp,       &ActivityManager::goToMyApp},
 };
 ```
@@ -97,12 +95,12 @@ constexpr AppEntry kAppEntries[] = {
 Define stable IDs and default visibility in `src/AppVisibility.h`; keep titles, icons, and launch actions in the menu table.
 
 The ID is the persisted bit position in `hiddenAppsMask`: allocate the next unused value, never reuse or change existing
-values, and keep conditional-app IDs outside their `#ifdef`. New bits default to visible. Fresh settings hide Chinese
-Chess, Minesweeper, 2048, Ugly Avatar, Buddy, Sokoban, Pixel Switch, and Woodfish.
-Existing masks are preserved except for the one-time Buddy migration from catalog version 0.
+values, and keep conditional-app IDs outside their `#ifdef`. Retired apps keep their IDs as `Retired<N>` entries so
+old masks never light up a new app. New bits default to visible. Fresh settings hide Minesweeper and 2048.
+Existing masks are preserved; bump `APPS_CATALOG_VERSION` only to hide a newly added app once on upgrade.
 The menu, launcher, and App Visibility settings all read this same table; no `switch` or `buildItems()` is needed.
-The visibility mask is 32-bit. `Calculator = 15`, `Woodfish = 16` and `Hermes = 17`
-are stable; IDs 18 through 31 remain available.
+The visibility mask is 32-bit. IDs 0 through 19 are allocated (including retired
+slots); IDs 20 through 31 remain available.
 
 ### 4. Add the i18n key and icon
 
@@ -113,7 +111,7 @@ are stable; IDs 18 through 31 remain available.
 
 ### 5. (Optional) Stateless toy apps
 
-Some apps have no save state at all. Ugly Avatar is a single-screen generator that creates a new avatar on entry and exits cleanly. It skips both `GameSaveDebouncer` and any `*Store.{h,cpp}` layer, and its `Activity` is launched directly (no `*MenuActivity`). Use this pattern when the app has no "in-progress game" worth resuming; it cuts a few hundred lines and avoids persistent writes.
+Some apps have no save state at all. Calculator starts fresh on entry and exits cleanly. It skips both `GameSaveDebouncer` and any `*Store.{h,cpp}` layer, and its `Activity` is launched directly (no `*MenuActivity`). Use this pattern when the app has no "in-progress game" worth resuming; it cuts a few hundred lines and avoids persistent writes.
 
 ### Reusable implementation patterns
 
@@ -121,8 +119,8 @@ Choose the smallest pattern that fits:
 
 | App shape | Reference | Reuse |
 |---|---|---|
-| Stateless, single screen | `avatar/UglyAvatarActivity` | `Activity`, `GameUi` action geometry; no Store or menu Activity |
-| Stateful, single screen | `2048/Game2048Activity`, `woodfish/WoodfishActivity` | Board/state object plus `GameSaveDebouncer` or an app-specific idle checkpoint |
+| Stateless, single screen | `calculator/CalculatorActivity` | `Activity` plus an in-RAM state object; no Store or menu Activity |
+| Stateful, single screen | `2048/Game2048Activity` | Board/state object plus `GameSaveDebouncer` |
 | Board game with launcher | `sudoku/` | Separate Board, Store, MenuActivity, GameActivity; `OptionPopup` for in-game menus |
 
 Use `OptionPopup` for in-game action and difficulty menus. It owns touch hit
@@ -134,15 +132,13 @@ AI, and persistence in the game: they are not framework concerns.
 
 ### 6. Language-independent visibility
 
-Chinese Chess and WeRead are compiled into the unified firmware. The existing
-`ENABLE_CHINESE_VERSION` compatibility guards remain enabled by the base and
-simulator profiles; do not add a separate Chinese build or source-filter split.
+The existing `ENABLE_CHINESE_VERSION` compatibility guards remain enabled by the
+base and simulator profiles; do not add a separate Chinese build or source-filter split.
 
 The launcher applies `effectiveHiddenMask()` to combine user visibility and
 configured OPDS servers. The settings toggle reflects the user choice even when
 OPDS is temporarily absent from the menu because no server is configured. App visibility is independent of the UI language and
-content profile. WeRead is visible by default in every language; Chinese Chess
-is hidden by default. Language changes preserve the user's app visibility choices.
+content profile. Language changes preserve the user's app visibility choices.
 See [Chinese support](../../../docs/engineering/chinese-build.md).
 
 ---
@@ -163,13 +159,7 @@ Home  ──Confirm "Apps"──▶  AppsMenu  ──Confirm row──▶  <App>
   └──────Back──────────────────┘    ◀──Back──  <App>  (returns to AppsMenu, not Home)
 ```
 
-Every sub-app's Back button must call `activityManager.goToApps()`. This mirrors how Sudoku, Gomoku, Ugly Avatar, and AirPage behave.
-
-Electronic Woodfish accepts Confirm and all four logical directions on button
-release. Touch devices add taps on the rendered wooden body; whitespace,
-mallet, ripples, drags, and the system Back gesture are not knocks. Its
-`uint32_t` counter saturates, has no reset action, and is checkpointed to SD
-after 60 seconds idle or on exit.
+Every sub-app's Back button must call `activityManager.goToApps()`. This mirrors how Sudoku, Gomoku, Calculator, and AirPage behave.
 
 ## AirPage
 
@@ -217,8 +207,8 @@ Apps share the reader's resource budget: about 380KB usable RAM on ESP32-C3, wit
 - **Heap**: allocate at `onEnter()`, free at `onExit()` (Activities are heap-allocated and `delete`d on exit). Don't hold buffers across navigation.
 - **Stack**: keep local function variables under 256 bytes; large buffers go on heap or `static`.
 - **Flash strings**: large constant tables must be `static constexpr` to stay in flash, not in DRAM.
-- **Storage writes**: never save on every user interaction. Debounce save-on-activity-exit, or use `GameSaveDebouncer` (1.5s window). Electronic Woodfish checkpoints its SD-backed counter only after 60 seconds idle or on exit.
-- **Single-buffer framebuffer**: 48KB framebuffer is shared. If an app needs to overlay (modal save UI etc.), use `renderer.storeBwBuffer()` / `restoreBwBuffer()` — see `UglyAvatarActivity::onSave()` for a worked example.
+- **Storage writes**: never save on every user interaction. Debounce save-on-activity-exit, or use `GameSaveDebouncer` (1.5s window).
+- **Single-buffer framebuffer**: 48KB framebuffer is shared. If an app needs to overlay (modal save UI etc.), use `renderer.storeBwBuffer()` / `restoreBwBuffer()` — see `StandbyActivity::applyGrayscalePass()` for a worked example.
 
 See [AGENTS.md](../../../AGENTS.md) and the
 [resource protocol](../../../docs/engineering/hardware-constraints.md#the-resource-protocol);

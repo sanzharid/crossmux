@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class WeReadTlsConfigTest(unittest.TestCase):
+class TlsFragmentConfigTest(unittest.TestCase):
     def test_firmware_keeps_fragment_support_without_sni_wrapper(self):
         ini = (ROOT / "platformio.ini").read_text()
         config = configparser.ConfigParser(interpolation=None)

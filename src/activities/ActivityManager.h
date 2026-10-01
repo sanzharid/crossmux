@@ -105,7 +105,6 @@ class ActivityManager {
   void goToFileTransfer();
   void goToUsbDrive();
   void goToSettings();
-  void goToUglyAvatar();
   void goToReadingStatsMenu();
   void goToReadingStats();
   void goToInxRecent();
@@ -121,14 +120,12 @@ class ActivityManager {
   void goToCrashReport();
   void goToApps();
   void goToSudoku();
-  void goToSokoban();
   void goToGomoku();
   void goToMinesweeper();
-  void goToPixelSwitch();
   void goToCalculator();
-  void goToWoodfish();
   void goToHermes();
   void goToS3xy();
+  void goToSystemMonitor();
   // AI-button push-to-talk: starts listening in the open Hermes chat, or opens
   // one on top of the current screen (Back returns there).
   void goToHermesPushToTalk();
@@ -137,15 +134,8 @@ class ActivityManager {
   void requestLock();
   bool isLocked() const;
   void goToAirPage();
-  void goToBuddy();
   void goToStandby();
   void goToGame2048();
-#ifdef ENABLE_CHINESE_VERSION
-  void goToChineseChess();
-#endif
-#ifdef ENABLE_CHINESE_VERSION
-  void goToWeRead();
-#endif
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   // The main tab "home" lands on (Settings → Controls → Home screen).
   MainTab homeMainTab() const;

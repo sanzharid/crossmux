@@ -5,7 +5,7 @@ add_executable(SystemSettingsResetTest
 )
 
 target_include_directories(SystemSettingsResetTest BEFORE PRIVATE
-  ${REPO_ROOT}/test/woodfish_store/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${crosspoint_simulator_SOURCE_DIR}/src
   ${REPO_ROOT}/src/util
 )

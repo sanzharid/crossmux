@@ -54,14 +54,10 @@ add_subdirectory(html_to_plain_text)
 add_subdirectory(minibidi_arabic)
 add_subdirectory(combining_marks)
 add_subdirectory(time_utils)
-add_subdirectory(weread_webapi)
 add_subdirectory(airpage)
-add_subdirectory(chinese_chess)
 add_subdirectory(sd_card_font_cache_format)
-add_subdirectory(pixel_switch)
 add_subdirectory(inx_navigation)
 add_subdirectory(sloppy_digits)
-add_subdirectory(woodfish_store)
 add_subdirectory(book_cover_loader)
 add_subdirectory(calculator)
 add_subdirectory(hermes_protocol)
@@ -111,8 +107,6 @@ foreach(font_test DifferentialRoundingTest LigatureGuardTest CalculatorFontTest 
 endforeach()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_test(NAME WeReadLogout
-  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_weread_logout.py)
 add_test(NAME BuiltinFontShrink
   COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_builtin_font_shrink.py)
 add_test(NAME PioarduinoCache

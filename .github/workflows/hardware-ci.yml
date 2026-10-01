@@ -14,7 +14,6 @@ on:
       - lib/hal/**
       - lib/EpdFont/**
       - lib/GfxRenderer/**
-      - lib/WeReadWebApi/**
       - src/MappedInputManager.*
       - src/Ble*
       - src/platform/BtLibraryInUseShim.h
@@ -26,7 +25,6 @@ on:
       - src/main.cpp
       - src/activities/ActivityManager.*
       - src/activities/apps/AppsMenuActivity.cpp
-      - src/activities/apps/weread/**
       - src/activities/boot_sleep/**
       - src/activities/reader/**
       - src/activities/settings/**
@@ -51,7 +49,6 @@ on:
       - lib/hal/**
       - lib/EpdFont/**
       - lib/GfxRenderer/**
-      - lib/WeReadWebApi/**
       - src/MappedInputManager.*
       - src/Ble*
       - src/platform/BtLibraryInUseShim.h
@@ -63,7 +60,6 @@ on:
       - src/main.cpp
       - src/activities/ActivityManager.*
       - src/activities/apps/AppsMenuActivity.cpp
-      - src/activities/apps/weread/**
       - src/activities/boot_sleep/**
       - src/activities/reader/**
       - src/activities/settings/**

@@ -14,19 +14,10 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/apps.h"
-#include "components/icons/avatar.h"
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
 #include "components/icons/bookmark.h"
-#include "components/icons/buddy.h"
 #include "components/icons/calculator.h"
-#include "components/icons/sokoban.h"
-#ifdef ENABLE_CHINESE_VERSION
-#include "components/icons/chinese_chess.h"
-#endif
-#ifdef ENABLE_CHINESE_VERSION
-#include "components/icons/weread.h"
-#endif
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
@@ -35,11 +26,11 @@
 #include "components/icons/gomoku.h"
 #include "components/icons/hermes.h"
 #include "components/icons/s3xy.h"
+#include "components/icons/sysmon.h"
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
 #include "components/icons/minesweeper.h"
-#include "components/icons/pixel_switch.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
 #include "components/icons/standby.h"
@@ -47,7 +38,6 @@
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/wifi.h"
-#include "components/icons/woodfish.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -110,38 +100,22 @@ const uint8_t* LyraTheme::iconForName(UIIcon icon, int size) {
         return AppsIcon;
       case UIIcon::Sudoku:
         return SudokuIcon;
-      case UIIcon::Sokoban:
-        return SokobanIcon;
       case UIIcon::Gomoku:
         return GomokuIcon;
-#ifdef ENABLE_CHINESE_VERSION
-      case UIIcon::ChineseChess:
-        return ChineseChessIcon;
-#endif
-#ifdef ENABLE_CHINESE_VERSION
-      case UIIcon::WeRead:
-        return WeReadIcon;
-#endif
       case UIIcon::Minesweeper:
         return MinesweeperIcon;
-      case UIIcon::Avatar:
-        return AvatarIcon;
       case UIIcon::Standby:
         return StandbyIcon;
       case UIIcon::Game2048:
         return Game2048Icon;
-      case UIIcon::Buddy:
-        return BuddyIcon;
-      case UIIcon::PixelSwitch:
-        return PixelSwitchIcon;
       case UIIcon::Calculator:
         return CalculatorIcon;
-      case UIIcon::Woodfish:
-        return WoodfishIcon;
       case UIIcon::Hermes:
         return HermesIcon;
       case UIIcon::S3xy:
         return S3xyIcon;
+      case UIIcon::SystemMonitor:
+        return SystemMonitorIcon;
       default:
         return nullptr;
     }

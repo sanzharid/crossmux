@@ -7,7 +7,7 @@
 #include "activities/UiListActivity.h"
 
 // Apps menu — the single entry-point on the home screen for all non-reader sub-apps
-// (Sudoku, Gomoku, Ugly Avatar, ...). The full list is the constexpr `kAppEntries` table
+// (Sudoku, Gomoku, Calculator, ...). The full list is the constexpr `kAppEntries` table
 // in AppsMenuActivity.cpp; add a new app by assigning a stable AppId, appending one row,
 // and adding goTo<App>() in ActivityManager. See src/activities/apps/README.md.
 class AppsMenuActivity final : public UiListActivity {

@@ -50,9 +50,6 @@
 #include "util/ReadingBackground.h"
 #include "util/ReadingGuideLine.h"
 #ifdef ENABLE_CHINESE_VERSION
-#include <WeReadStore.h>
-
-#include "activities/apps/weread/WeReadProgressSyncActivity.h"
 #include "activities/settings/FontDownloadActivity.h"
 #endif
 #include "components/UITheme.h"
@@ -61,7 +58,6 @@
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
-#include "util/TimeUtils.h"
 
 namespace {
 constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
@@ -320,38 +316,11 @@ bool EpubReaderActivity::loadBook() {
 
   epub->setupCacheDir();
 
-#ifdef ENABLE_CHINESE_VERSION
-  wereadBookId_[0] = '\0';
-  if (WeReadStore::findBookIdForPath(epub->getPath(), wereadBookId_, sizeof(wereadBookId_)) &&
-      strncmp(wereadBookId_, "MP_WXS_", 7) == 0) {
-    wereadBookId_[0] = '\0';
-  }
-  if (wereadBookId_[0]) {
-    const uint32_t timestamp = TimeUtils::getCurrentValidTimestamp();
-    if (timestamp != 0) {
-      switch (WeReadStore::promoteShelfBook(wereadBookId_, timestamp)) {
-        case WeReadStore::ShelfSortResult::Ok:
-          break;
-        case WeReadStore::ShelfSortResult::Degraded:
-          LOG_DBG("WR", "Large shelf: recent book promotion deferred until sync");
-          break;
-        case WeReadStore::ShelfSortResult::StorageError:
-          LOG_ERR("WR", "Failed to promote recently opened shelf book");
-          break;
-      }
-    }
-  }
-  bool hasSavedProgress = false;
-#endif
-
   HalFile f;
   if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {
     uint8_t data[10];
     int dataSize = f.read(data, sizeof(data));
     if (dataSize == 4 || dataSize == 6 || dataSize == 10) {
-#ifdef ENABLE_CHINESE_VERSION
-      hasSavedProgress = true;
-#endif
       currentSpineIndex = data[0] + (data[1] << 8);
       nextPageNumber = data[2] + (data[3] << 8);
       if (nextPageNumber == UINT16_MAX) {
@@ -378,20 +347,6 @@ bool EpubReaderActivity::loadBook() {
       LOG_DBG("ERS", "Opened for first time, navigating to text reference at index %d", textSpineIndex);
     }
   }
-
-#ifdef ENABLE_CHINESE_VERSION
-  if (wereadBookId_[0]) {
-    float initialProgress = 0.0f;
-    const bool loaded = WeReadStore::loadInitialProgress(wereadBookId_, initialProgress);
-    if (hasSavedProgress || !loaded || initialProgress <= 0.0f) {
-      WeReadStore::clearInitialProgress(wereadBookId_);
-    } else if (jumpToFraction(initialProgress)) {
-      clearInitialProgressAfterSave_ = true;
-    } else {
-      WeReadStore::clearInitialProgress(wereadBookId_);
-    }
-  }
-#endif
 
   READING_STATS.beginSession(
       epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getCoverBmpPath(),
@@ -735,9 +690,6 @@ void EpubReaderActivity::loop() {
         requestUpdate();
         break;
       case CrossPointSettings::LP_MENU_KOSYNC:
-#ifdef ENABLE_CHINESE_VERSION
-        if (wereadBookId_[0] && mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS && launchWeReadSync()) return;
-#endif
         if (mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS && launchKOReaderSync()) return;
         break;
       case CrossPointSettings::LP_MENU_DICTIONARY:
@@ -767,12 +719,6 @@ void EpubReaderActivity::loop() {
         }
         return;
       case CrossPointSettings::LP_MENU_KOSYNC:
-#ifdef ENABLE_CHINESE_VERSION
-        if (wereadBookId_[0]) {
-          launchWeReadSync();
-          return;
-        }
-#endif
         launchKOReaderSync();
         return;
       case CrossPointSettings::LP_MENU_DICTIONARY:
@@ -1174,12 +1120,6 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
     case EpubReaderMenuActivity::MenuAction::SYNC: {
-#ifdef ENABLE_CHINESE_VERSION
-      if (wereadBookId_[0]) {
-        launchWeReadSync();
-        break;
-      }
-#endif
       launchKOReaderSync();
       break;
     }
@@ -1205,9 +1145,6 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     case CrossPointSettings::LP_MENU_DICTIONARY:
       return ReaderUtils::BOOKMARK_HOLD_MS;
     case CrossPointSettings::LP_MENU_KOSYNC:
-#ifdef ENABLE_CHINESE_VERSION
-      if (wereadBookId_[0]) return ReaderUtils::GO_HOME_MS;
-#endif
       return KOREADER_STORE.hasCredentials() ? ReaderUtils::GO_HOME_MS : 0;
     case CrossPointSettings::LP_MENU_READER_MENU:
     case CrossPointSettings::LP_MENU_DISABLED:
@@ -1259,48 +1196,6 @@ bool EpubReaderActivity::launchKOReaderSync() {
                                                                    totalPages, std::move(localKoPos),
                                                                    std::move(localChapterName), paragraphIndex);
 }
-
-#ifdef ENABLE_CHINESE_VERSION
-bool EpubReaderActivity::launchWeReadSync() {
-  if (!wereadBookId_[0]) return false;
-
-  const int currentPage = section ? section->currentPage : nextPageNumber;
-  const int totalPages = section ? section->estimatedTotalPages() : cachedChapterTotalPageCount;
-  const float chapterFraction =
-      totalPages > 1 ? static_cast<float>(currentPage) / static_cast<float>(totalPages - 1) : 0.0f;
-  const float localFraction = epub->calculateProgress(currentSpineIndex, chapterFraction);
-  const CrossPointPosition localPosition = getCurrentPosition();
-  std::string savedEpubPath = epub->getPath();
-
-  if (!saveProgress(currentSpineIndex, currentPage, totalPages)) {
-    LOG_ERR("WRSync", "Aborting sync because current progress could not be saved");
-    pendingSyncSaveError = true;
-    requestUpdate();
-    return true;
-  }
-
-  const auto context = WeReadProgressSyncActivity::makeContext(*epub, wereadBookId_, localFraction, localPosition);
-  auto sync = makeUniqueNoThrow<WeReadProgressSyncActivity>(renderer, mappedInput, std::move(savedEpubPath),
-                                                            wereadBookId_, context);
-  if (!sync) {
-    LOG_ERR("WRSync", "OOM: WeReadProgressSyncActivity (%u bytes)",
-            static_cast<unsigned>(sizeof(WeReadProgressSyncActivity)));
-    pendingSyncLaunchError = true;
-    requestUpdate();
-    return true;
-  }
-
-  {
-    RenderLock lock;
-    if (section) nextPageNumber = section->currentPage;
-    ImageBlock::setExtractor(nullptr, nullptr);
-    section.reset();
-    epub.reset();
-  }
-  activityManager.replaceActivity(std::move(sync));
-  return true;
-}
-#endif
 
 void EpubReaderActivity::applyInitialOrientation() {
   ReaderActivity::applyInitialOrientation();
@@ -1882,13 +1777,7 @@ bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
                  ? currentPageVisibleOffset
                  : section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
   }
-  const bool saved = EpubReaderUtils::saveProgress(*epub, spineIndex, currentPage, pageCount, offset);
-#ifdef ENABLE_CHINESE_VERSION
-  if (saved && clearInitialProgressAfterSave_ && WeReadStore::clearInitialProgress(wereadBookId_)) {
-    clearInitialProgressAfterSave_ = false;
-  }
-#endif
-  return saved;
+  return EpubReaderUtils::saveProgress(*epub, spineIndex, currentPage, pageCount, offset);
 }
 
 void EpubReaderActivity::rememberCurrentContentOffset() {

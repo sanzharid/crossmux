@@ -1,8 +1,8 @@
 # SloppyDigits
 
 `SloppyDigits` is CrossMux's allocation-free procedural digit renderer. The
-sloppy clock chooses a random `Style`; the Chinese calendar and Electronic
-Woodfish use fixed styles and deterministic seeds.
+sloppy clock chooses a random `Style`; the Chinese calendar uses a fixed
+style and deterministic seeds.
 
 Include `SloppyDigits.h`, configure an `AlphabetId` and `Style`, call
 `prepareSeeds()` once for stable output, then pass digit text and a `Bounds` to

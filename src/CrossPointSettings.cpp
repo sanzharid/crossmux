@@ -244,7 +244,6 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Apps use stable IDs beyond the uint8_t-only SettingsList, so persist the mask manually.
   doc["hiddenAppsMask"] = hiddenAppsMask;
   doc["appsCatalogVersion"] = appsCatalogVersion;
-  doc["buddyClaimed"] = buddyClaimed;
   // Font family and size — both use dynamic getter/setters in SettingsList (the
   // option lists depend on the SD font registry), so the generic loop skips them.
   doc["fontFamily"] = fontFamily;
@@ -399,14 +398,12 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   hiddenAppsMask =
       doc["hiddenAppsMask"].isNull() ? appVisibility::DEFAULT_HIDDEN_APPS_MASK : doc["hiddenAppsMask"].as<uint32_t>();
   const uint8_t storedAppsCatalogVersion = doc["appsCatalogVersion"] | static_cast<uint8_t>(0);
-  // Buddy was added at catalog version 1. Hide it exactly once during the
-  // upgrade, then preserve the user's visibility choice on later boots.
+  // Bump APPS_CATALOG_VERSION when a new app must be hidden once on upgrade;
+  // the stored version lets later boots preserve the user's visibility choice.
   if (storedAppsCatalogVersion < APPS_CATALOG_VERSION) {
-    hiddenAppsMask |= appVisibility::appBit(appVisibility::AppId::Buddy);
     needsResave = true;
   }
   appsCatalogVersion = APPS_CATALOG_VERSION;
-  buddyClaimed = clamp(doc["buddyClaimed"] | static_cast<uint8_t>(0), static_cast<uint8_t>(2), static_cast<uint8_t>(0));
 
   // Reader font size — an actual point size since 1.5. Files written by 1.4 and
   // earlier hold the old SMALL/MEDIUM/LARGE/EXTRA_LARGE slot in 0..3; no font is
