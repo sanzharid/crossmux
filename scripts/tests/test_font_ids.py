@@ -16,7 +16,7 @@ class FontIdsTest(unittest.TestCase):
     def test_generated_ids_match_committed_header(self):
         ids = generator.font_ids(ROOT / 'lib/EpdFont/builtinFonts')
         self.assertEqual(generator.render_header(ids), (ROOT / 'src/fontIds.h').read_text())
-        self.assertEqual(len(ids), 13)
+        self.assertEqual(len(ids), 12)  # 13 upstream; this fork removed the Chinese Chess font
         self.assertNotIn(0, ids.values())
         self.assertEqual(len(set(ids.values())), len(ids))
 
