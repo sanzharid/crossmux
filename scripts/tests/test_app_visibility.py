@@ -79,9 +79,9 @@ int main() {
         AppId::Retired4, AppId::Minesweeper, AppId::Game2048, AppId::Retired7,
         AppId::Standby, AppId::AirPage, AppId::Retired10, AppId::Retired11, AppId::Retired12,
         AppId::FileTransfer, AppId::OpdsBrowser, AppId::Calculator, AppId::Retired16,
-        AppId::Hermes, AppId::S3xy, AppId::SystemMonitor, AppId::Library};
-    for (unsigned i = 0; i < 21; ++i) assert(static_cast<unsigned>(ids[i]) == i);
-    static_assert(static_cast<unsigned>(AppId::Count) == 21);
+        AppId::Hermes, AppId::S3xy, AppId::SystemMonitor, AppId::Library, AppId::AppLab};
+    for (unsigned i = 0; i < 22; ++i) assert(static_cast<unsigned>(ids[i]) == i);
+    static_assert(static_cast<unsigned>(AppId::Count) == 22);
     constexpr uint32_t expected = (1u<<5)|(1u<<6);
     static_assert(DEFAULT_HIDDEN_APPS_MASK == expected);
     assert(SETTINGS.hiddenAppsMask == expected);

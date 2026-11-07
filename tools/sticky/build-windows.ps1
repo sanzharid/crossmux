@@ -56,6 +56,12 @@ $ErrorActionPreference = "Stop"
 if ($LASTEXITCODE -ne 0) { throw "could not install pioarduino 6.1.19 into the build venv" }
 
 robocopy $repo $mirror /MIR /XD .git .pio build /NFL /NDL /NJH /NJS /NP | Out-Null
+# scripts/git_branch.py reads the commit with git from the mirror, and release
+# builds refuse to build without it. A worktree's .git is a pointer file that
+# robocopy already copied; for a normal checkout, point the mirror at it.
+if (Test-Path (Join-Path $repo ".git") -PathType Container) {
+  Set-Content -Path (Join-Path $mirror ".git") -Value ("gitdir: " + (Join-Path $repo ".git")) -Encoding ascii -NoNewline
+}
 
 $env:PLATFORMIO_WORKSPACE_DIR = Join-Path $mirror ".pio"
 Push-Location $mirror

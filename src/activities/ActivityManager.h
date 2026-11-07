@@ -144,6 +144,7 @@ class ActivityManager {
   void goToMinesweeper();
   void goToCalculator();
   void goToHermes();
+  void goToAppLab();
   void goToS3xy();
   void goToSystemMonitor();
   // AI-button push-to-talk: starts listening in the open Hermes chat, or opens

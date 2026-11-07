@@ -21,6 +21,7 @@ the IP address shown on the device screen.
 | `GET` | `/fonts` | SD-card font manager page |
 | `GET` | `/plugins` | Plugins page (web settings of SD-card plugins) |
 | `GET` | `/hermes` | Hermes URL and API key setup page |
+| `GET` | `/applab` | App Lab Gemini key, model and next-app description |
 | `GET` | `/js/jszip.min.js` | JavaScript asset used by the file manager |
 | `GET` | `/js/epub-optimizer.js` | File manager EPUB optimizer, loaded with JSZip only when needed |
 | `GET` | `/js/plugin-host.js` | Browser plugin host shared by the Plugins, File Manager, and `/plugins-run` pages |
@@ -32,6 +33,19 @@ Plugins link.
 The routes are identical in every firmware. Both page locales are embedded;
 Simplified-Chinese device UI selects `zh-CN`, and every other UI language uses
 the English pages. Page locale follows the UI language directly.
+
+## App Lab
+
+### `GET /api/applab`
+
+Returns `{"model", "defaultModel", "hasKey", "pendingPrompt", "apMode"}`. The key is never returned.
+
+### `POST /api/applab`
+
+Accepts any of `geminiKey`, `model` and `prompt`. A field left out keeps its
+saved value; an empty `model` resets to the default and an empty `prompt`
+clears the pending description. Responds like `GET`, or `400` with a reason.
+Same `Origin` rule as the Hermes endpoints. See [app-lab.md](app-lab.md).
 
 ## Hermes Setup
 

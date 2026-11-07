@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>App Lab - CrossMux</title>
+    <style>
+      .applab-form label { display: block; margin: 12px 0 4px; color: var(--label-color); font-size: 0.9em; }
+      /* 16px stops iOS from zooming the page when a field gets focus. */
+      .applab-form input,
+      .applab-form textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+        font-size: 16px;
+        font-family: inherit;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+      }
+      .applab-form textarea { min-height: 140px; resize: vertical; }
+      .applab-form .save-btn { width: 100%; }
+      #status { padding: 10px; border-radius: 6px; margin: 16px 0; display: none; }
+      #status.ok { background: #d4edda; color: #155724; display: block; }
+      #status.err { background: #f8d7da; color: #721c24; display: block; }
+      .warn { background: #fff3cd; color: #664d03; padding: 10px; border-radius: 6px; }
+      .hint { color: var(--label-color); font-size: 0.85em; }
+      [hidden] { display: none; }
+    </style>
+  <link rel="stylesheet" href="/assets/web.css" />
+  <link rel="icon" type="image/svg+xml" href="/assets/crosspoint-icon.svg" />
+  </head>
+  <body class="web-ui">
+    <!--#include file="../shared/Header.html.inc" -->
+<main class="page-content">
+
+    <p class="warn" id="apWarning" hidden>
+      This device's hotspot is an open network, so anyone nearby could read a key sent over it. If you can, connect the
+      device and your phone to your own Wi-Fi first.
+    </p>
+
+    <div id="status" role="status"></div>
+
+    <form id="form" class="applab-form" autocomplete="off">
+      <div class="card">
+        <h2>Gemini</h2>
+        <label for="geminiKey">API key</label>
+        <input id="geminiKey" type="password" autocapitalize="off" spellcheck="false" autocomplete="new-password" />
+        <p class="hint" id="keyHint"></p>
+        <label for="model">Model</label>
+        <input id="model" type="text" autocapitalize="off" spellcheck="false" />
+        <p class="hint">Leave empty for the default. Get a key at aistudio.google.com.</p>
+      </div>
+
+      <div class="card">
+        <h2>Next app</h2>
+        <label for="prompt">Describe the app you want</label>
+        <textarea id="prompt" maxlength="2000" placeholder="A pomodoro timer with big digits, a start/pause button and a count of finished sessions"></textarea>
+        <p class="hint">On the Sticky, open App Lab and choose "Make the app sent from your phone".</p>
+      </div>
+
+      <button id="save" class="save-btn" type="submit">Save</button>
+      <p class="hint">Saved keys are never shown here. Keys are sent without encryption on your network, so only use this on a network you trust.</p>
+    </form>
+
+    </main>
+<!--#include file="../shared/Footer.html.inc" -->
+    <script>
+      const el = (id) => document.getElementById(id);
+
+      function showStatus(text, ok) {
+        const status = el('status');
+        status.textContent = text;
+        status.className = ok ? 'ok' : 'err';
+      }
+
+      function showConfig(config) {
+        el('geminiKey').value = '';
+        el('model').value = config.model === config.defaultModel ? '' : config.model;
+        el('model').placeholder = config.defaultModel;
+        el('prompt').value = config.pendingPrompt;
+        el('keyHint').textContent = config.hasKey ? 'A key is saved. Leave blank to keep it.' : 'No key saved yet.';
+        el('apWarning').hidden = !config.apMode;
+      }
+
+      async function load() {
+        const res = await fetch('/api/applab');
+        if (!res.ok) throw new Error(await res.text());
+        showConfig(await res.json());
+      }
+
+      el('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const body = { model: el('model').value, prompt: el('prompt').value };
+        // A blank key field means "keep the saved key", so it is left out of the request.
+        if (el('geminiKey').value) body.geminiKey = el('geminiKey').value;
+
+        el('save').disabled = true;
+        try {
+          const res = await fetch('/api/applab', { method: 'POST', body: JSON.stringify(body) });
+          if (!res.ok) throw new Error(await res.text());
+          showConfig(await res.json());
+          showStatus('Saved. Open App Lab on the device.', true);
+        } catch (error) {
+          showStatus(error.message, false);
+        } finally {
+          el('save').disabled = false;
+        }
+      });
+
+      load().catch((error) => showStatus('Could not load settings: ' + error.message, false));
+    </script>
+  </body>
+</html>

@@ -17,6 +17,7 @@
       <a href="/settings">Settings</a>
       <a href="/fonts">Fonts</a>
       <a href="/hermes">Hermes</a>
+      <a href="/applab">App Lab</a>
       <a href="/plugins">Plugins</a>
     </nav>
   </div>
@@ -34,6 +35,7 @@
       <a href="/settings">Settings</a>
       <a href="/fonts">Fonts</a>
       <a href="/hermes">Hermes</a>
+      <a href="/applab">App Lab</a>
       <a href="/plugins">Plugins</a>
     </nav>
   </details>

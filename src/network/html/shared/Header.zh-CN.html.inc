@@ -17,6 +17,7 @@
       <a href="/settings">设置</a>
       <a href="/fonts">字体</a>
       <a href="/hermes">Hermes</a>
+      <a href="/applab">App Lab</a>
       <a href="/plugins">插件</a>
     </nav>
   </div>
@@ -34,6 +35,7 @@
       <a href="/settings">设置</a>
       <a href="/fonts">字体</a>
       <a href="/hermes">Hermes</a>
+      <a href="/applab">App Lab</a>
       <a href="/plugins">插件</a>
     </nav>
   </details>

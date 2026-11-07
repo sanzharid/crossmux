@@ -135,6 +135,10 @@ class CrossPointWebServer {
   void handlePostHermes();
   bool rejectCrossOriginHermesRequest() const;
   void sendHermesConfig() const;
+  void handleAppLabPage() const;
+  void handleGetAppLab() const;
+  void handlePostAppLab();
+  void sendAppLabConfig() const;
   void handleFontList() const;
   void handleFontUpload();
   void handleFontUploadData();

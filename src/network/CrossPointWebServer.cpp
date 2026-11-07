@@ -54,11 +54,15 @@
 #include "SettingsList.h"
 #include "WebDAVHandler.h"
 #include "WifiCredentialStore.h"
+#include "activities/apps/applab/AppLabFiles.h"
+#include "activities/apps/applab/AppLabProtocol.h"
+#include "activities/apps/applab/AppLabStore.h"
 #include "activities/apps/hermes/HermesStore.h"
 #include "activities/apps/hermes/HermesWebUpdate.h"
 namespace web_zh_cn {
 #include "html/zh-CN/FilesPageHtml.generated.h"
 #include "html/zh-CN/FontsPageHtml.generated.h"
+#include "html/zh-CN/AppLabPageHtml.generated.h"
 #include "html/zh-CN/HermesPageHtml.generated.h"
 #include "html/zh-CN/HomePageHtml.generated.h"
 #include "html/zh-CN/PluginsPageHtml.generated.h"
@@ -67,6 +71,7 @@ namespace web_zh_cn {
 namespace web_en {
 #include "html/en/FilesPageHtml.generated.h"
 #include "html/en/FontsPageHtml.generated.h"
+#include "html/en/AppLabPageHtml.generated.h"
 #include "html/en/HermesPageHtml.generated.h"
 #include "html/en/HomePageHtml.generated.h"
 #include "html/en/SettingsPageHtml.generated.h"
@@ -393,6 +398,11 @@ class CrossPointWebServer::RouteHandler final : public RequestHandler {
         {"/hermes", HTTP_GET, [](S& s) { s.handleHermesPage(); }, nullptr},
         {"/api/hermes", HTTP_GET, [](S& s) { s.handleGetHermes(); }, nullptr},
         {"/api/hermes", HTTP_POST, [](S& s) { s.handlePostHermes(); }, nullptr},
+
+        // App Lab: Gemini key, model and a prompt for the next app, from a phone.
+        {"/applab", HTTP_GET, [](S& s) { s.handleAppLabPage(); }, nullptr},
+        {"/api/applab", HTTP_GET, [](S& s) { s.handleGetAppLab(); }, nullptr},
+        {"/api/applab", HTTP_POST, [](S& s) { s.handlePostAppLab(); }, nullptr},
 
         // Browser-side plugins (JS on the SD card) + their generic capabilities.
         {"/api/plugins", HTTP_GET, [](S& s) { s.handlePluginList(); }, nullptr},
@@ -3487,6 +3497,94 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
 }
 
 // --- Font management handlers ---
+
+void CrossPointWebServer::handleAppLabPage() const {
+  const auto page = localizedPage(web_zh_cn::AppLabPageHtml, sizeof(web_zh_cn::AppLabPageHtml), web_en::AppLabPageHtml,
+                                  sizeof(web_en::AppLabPageHtml));
+  if (sendCompressedContent(server.get(), "text/html", page.data, page.size)) {
+    LOG_DBG("WEB", "Served App Lab page");
+  }
+}
+
+void CrossPointWebServer::sendAppLabConfig() const {
+  const auto& store = APPLAB_STORE;
+  std::string pending;
+  applab::readPendingPrompt(pending);
+  JsonDocument doc;
+  doc["model"] = store.model;
+  doc["defaultModel"] = AppLabStore::kDefaultModel;
+  // Never expose the key over the API: only indicate whether one is set.
+  doc["hasKey"] = store.hasKey();
+  doc["pendingPrompt"] = pending;
+  doc["apMode"] = apMode;
+  String output;
+  serializeJson(doc, output);
+  server->send(200, "application/json", output);
+}
+
+void CrossPointWebServer::handleGetAppLab() const {
+  if (rejectCrossOriginHermesRequest()) return;
+  APPLAB_STORE.loadFromFile();
+  sendAppLabConfig();
+}
+
+void CrossPointWebServer::handlePostAppLab() {
+  if (rejectCrossOriginHermesRequest()) return;
+  if (!server->hasArg("plain")) {
+    server->send(400, "text/plain", "Missing JSON body");
+    return;
+  }
+  const String body = server->arg("plain");
+  if (body.length() > applab::kMaxPromptBytes + hermesweb::kMaxBodyLength) {
+    server->send(413, "text/plain", "Request too large");
+    return;
+  }
+  JsonDocument doc;
+  const DeserializationError err = deserializeJson(doc, body);
+  if (err) {
+    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+    return;
+  }
+
+  auto& store = APPLAB_STORE;
+  store.loadFromFile();
+  std::string key = store.geminiKey;
+  std::string model = store.model;
+  if (doc["geminiKey"].is<const char*>()) {
+    key = hermesweb::trimmed(doc["geminiKey"].as<const char*>());
+    if (!hermesweb::isValidKey(key)) {
+      server->send(400, "text/plain", "The Gemini API key must be under 200 characters, with no spaces.");
+      return;
+    }
+  }
+  if (doc["model"].is<const char*>()) {
+    model = hermesweb::trimmed(doc["model"].as<const char*>());
+    if (model.empty()) model = AppLabStore::kDefaultModel;
+    if (!applab::isValidModel(model)) {
+      server->send(400, "text/plain", "The model name may only use lowercase letters, digits, dots and dashes.");
+      return;
+    }
+  }
+  if (doc["prompt"].is<const char*>()) {
+    const std::string prompt = hermesweb::trimmed(doc["prompt"].as<const char*>());
+    if (prompt.size() > applab::kMaxPromptBytes) {
+      server->send(400, "text/plain", "The app description is too long (2000 characters at most).");
+      return;
+    }
+    if (!applab::writePendingPrompt(prompt)) {
+      server->send(500, "text/plain", "Could not save to the SD card.");
+      return;
+    }
+  }
+  store.geminiKey = std::move(key);
+  store.model = std::move(model);
+  if (!store.saveToFile()) {
+    server->send(500, "text/plain", "Could not save to the SD card.");
+    return;
+  }
+  LOG_INF("WEB", "App Lab settings updated from the web page");
+  sendAppLabConfig();
+}
 
 void CrossPointWebServer::handleHermesPage() const {
   const auto page = localizedPage(web_zh_cn::HermesPageHtml, sizeof(web_zh_cn::HermesPageHtml), web_en::HermesPageHtml,

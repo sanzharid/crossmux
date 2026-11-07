@@ -41,6 +41,7 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::Game2048, StrId::STR_2048_TITLE, UIIcon::Game2048, &ActivityManager::goToGame2048},
     {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
     {AppId::Hermes, StrId::STR_HERMES_TITLE, UIIcon::Hermes, &ActivityManager::goToHermes},
+    {AppId::AppLab, StrId::STR_APPLAB_TITLE, UIIcon::Blocks, &ActivityManager::goToAppLab},
     {AppId::SystemMonitor, StrId::STR_SYSMON_TITLE, UIIcon::SystemMonitor, &ActivityManager::goToSystemMonitor},
 #if S3XY_BUTTON
     {AppId::S3xy, StrId::STR_S3XY_TITLE, UIIcon::S3xy, &ActivityManager::goToS3xy},

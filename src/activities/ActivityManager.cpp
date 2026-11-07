@@ -22,6 +22,7 @@
 #include "apps/airpage/AirPageActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
 #include "apps/gomoku/GomokuMenuActivity.h"
+#include "apps/applab/AppLabActivity.h"
 #include "apps/hermes/HermesChatActivity.h"
 #include "apps/minesweeper/MinesweeperMenuActivity.h"
 #include "apps/reading-stats/ReadingStatsActivity.h"
@@ -686,6 +687,8 @@ void ActivityManager::goToMinesweeper() { replaceActivityWith<MinesweeperMenuAct
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
 
 void ActivityManager::goToHermes() { replaceActivityWith<HermesChatActivity>(); }
+
+void ActivityManager::goToAppLab() { replaceActivityWith<AppLabActivity>(); }
 
 void ActivityManager::goToS3xy() { replaceActivityWith<S3xyActivity>(); }
 
