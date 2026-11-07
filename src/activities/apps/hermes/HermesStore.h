@@ -21,10 +21,10 @@ class HermesStore : public PersistableStore<HermesStore> {
   bool fromJson(JsonVariantConst doc);
 
   // --- Chat (Hermes Agent API server) ---
-  std::string chatUrl;                                // base URL, e.g. http://hermes.local:8642
-  std::string chatKey;                                // API_SERVER_KEY (Bearer)
-  std::string chatModel = "hermes-agent";             // profile / model name
-  std::string conversation = "sticky";                // server-side conversation name
+  std::string chatUrl;                     // base URL, e.g. http://hermes.local:8642
+  std::string chatKey;                     // API_SERVER_KEY (Bearer)
+  std::string chatModel = "hermes-agent";  // profile / model name
+  std::string conversation = "sticky";     // server-side conversation name
   ChatApi chatApi = ChatApi::Responses;
   uint16_t timeoutSeconds = 180;  // agent turns can run tools for a while
 
@@ -32,7 +32,7 @@ class HermesStore : public PersistableStore<HermesStore> {
   std::string sttUrl;  // full endpoint URL; empty = voice disabled
   std::string sttKey;  // optional Bearer token
   std::string sttModel = "whisper-1";
-  std::string sttLanguage;  // optional ISO code, e.g. "en"; empty = auto-detect
+  std::string sttLanguage;    // optional ISO code, e.g. "en"; empty = auto-detect
   bool voiceAutoSend = true;  // send the transcript straight to Hermes
   bool downloadBooks = true;  // fetch .epub/.txt/.xtc links in replies into /Books/Hermes
   uint8_t maxRecordSeconds = 30;

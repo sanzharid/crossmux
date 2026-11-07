@@ -72,7 +72,8 @@ TEST(HermesWebUpdate, TrimsPastedWhitespace) {
 }
 
 TEST(HermesWebUpdate, RejectsBadUrlsWithoutChangingAnything) {
-  for (const std::string bad : {"hermes:8642", "ftp://host", "http://", "https:///path", "http://ho st", "javascript:alert(1)"}) {
+  for (const std::string bad :
+       {"hermes:8642", "ftp://host", "http://", "https:///path", "http://ho st", "javascript:alert(1)"}) {
     std::string url = "http://hermes:8642";
     std::string key = "secret";
     EXPECT_EQ(applyUrlKeyUpdate(url, key, set(bad), set("new-key")), UpdateResult::InvalidUrl) << bad;

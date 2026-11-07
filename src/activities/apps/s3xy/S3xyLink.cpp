@@ -113,9 +113,8 @@ bool begin() {
   notifyChar->setValue(&idle, 1);
   notifyChar->setCallbacks(&notifyCallbacks);  // static: never deleted
 
-  NimBLECharacteristic* idChar =
-      service->createCharacteristic(kIdUuid, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ_ENC |
-                                                 NIMBLE_PROPERTY::WRITE_ENC);
+  NimBLECharacteristic* idChar = service->createCharacteristic(
+      kIdUuid, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::WRITE_ENC);
   uint8_t id[10];
   buildId(id);
   idChar->setValue(id, sizeof(id));

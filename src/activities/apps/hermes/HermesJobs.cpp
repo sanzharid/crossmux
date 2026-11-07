@@ -1,10 +1,8 @@
 #include "HermesJobs.h"
 
-#include "network/HttpDownloader.h"
-
 #include <Arduino.h>
-#include <Logging.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <SecureHttpClient.h>
 
 #include <algorithm>
@@ -13,11 +11,13 @@
 #include <cstring>
 #include <new>
 
+#include "network/HttpDownloader.h"
+
 #if HERMES_HAS_MIC
 #include <BoardConfig.h>  // BoardConfig::ACTIVE.mic — pins, enable rail
 #include <Buzzer.h>
-#include <driver/i2s_pdm.h>
 #include <driver/gpio.h>
+#include <driver/i2s_pdm.h>
 #endif
 
 namespace hermes {

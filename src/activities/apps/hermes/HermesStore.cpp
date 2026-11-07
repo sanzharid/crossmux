@@ -62,8 +62,8 @@ bool HermesStore::fromJson(JsonVariantConst doc) {
   sttLanguage = doc["sttLanguage"] | "";
   voiceAutoSend = doc["voiceAutoSend"] | true;
   downloadBooks = doc["downloadBooks"] | true;
-  maxRecordSeconds = validOption(kRecordSecondsOptions, static_cast<uint8_t>(doc["maxRecordSeconds"] | 30),
-                                 static_cast<uint8_t>(30));
+  maxRecordSeconds =
+      validOption(kRecordSecondsOptions, static_cast<uint8_t>(doc["maxRecordSeconds"] | 30), static_cast<uint8_t>(30));
   return true;
 }
 

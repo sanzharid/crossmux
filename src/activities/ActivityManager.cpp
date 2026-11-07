@@ -21,27 +21,27 @@
 #include "apps/AppsMenuActivity.h"
 #include "apps/airpage/AirPageActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
-#include "components/SubpageLayout.h"
 #include "apps/gomoku/GomokuMenuActivity.h"
+#include "apps/hermes/HermesChatActivity.h"
 #include "apps/minesweeper/MinesweeperMenuActivity.h"
 #include "apps/reading-stats/ReadingStatsActivity.h"
 #include "apps/reading-stats/ReadingStatsMenuActivity.h"
+#include "apps/s3xy/S3xyActivity.h"
 #include "apps/standby/StandbyActivity.h"
 #include "apps/sudoku/SudokuMenuActivity.h"
-#include "apps/hermes/HermesChatActivity.h"
-#include "apps/s3xy/S3xyActivity.h"
 #include "apps/sysmon/SystemMonitorActivity.h"
-#include "lock/LockScreenActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/SubpageLayout.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/InxRecentActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "library/LibraryListActivity.h"
+#include "lock/LockScreenActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
@@ -563,7 +563,7 @@ void ActivityManager::goToRecentBooks() { replaceActivityWith<RecentBooksActivit
 
 void ActivityManager::goToInxRecent() { replaceActivityWith<InxRecentActivity>(); }
 
-MainTab ActivityManager::homeMainTab() const {
+MainTab ActivityManager::homeMainTab() {
   return SETTINGS.homeScreen == CrossPointSettings::HOME_APPS ? MainTab::Apps : MainTab::Recent;
 }
 
@@ -703,8 +703,9 @@ void ActivityManager::goToHermesPushToTalk() {
     return;
   }
   // A child of an open chat (keyboard, Setup, Wi-Fi) is on top: don't nest a second chat.
-  for (const auto& activity : stackActivities) {
-    if (activity->name == HermesChatActivity::kName) return;
+  if (std::any_of(stackActivities.begin(), stackActivities.end(),
+                  [](const auto& activity) { return activity->name == HermesChatActivity::kName; })) {
+    return;
   }
   auto chat = makeUniqueNoThrow<HermesChatActivity>(renderer, mappedInput, HermesChatActivity::Launch::PushToTalk);
   if (!chat) {

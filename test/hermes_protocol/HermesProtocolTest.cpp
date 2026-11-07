@@ -67,9 +67,9 @@ TEST(HermesProtocol, ParsesChatCompletions) {
 TEST(HermesProtocol, ReportsServerErrors) {
   std::string text;
   std::string error;
-  EXPECT_EQ(hermes::parseReply(R"({"error":{"message":"Invalid API key","type":"auth"}})", ApiStyle::Responses, text,
-                               error),
-            ParseResult::NoText);
+  EXPECT_EQ(
+      hermes::parseReply(R"({"error":{"message":"Invalid API key","type":"auth"}})", ApiStyle::Responses, text, error),
+      ParseResult::NoText);
   EXPECT_EQ(error, "Invalid API key");
   EXPECT_EQ(hermes::parseReply("<html>502</html>", ApiStyle::Responses, text, error), ParseResult::BadJson);
 }
@@ -91,11 +91,11 @@ TEST(HermesProtocol, WavHeaderIsCanonical) {
   EXPECT_EQ(std::memcmp(header, "RIFF", 4), 0);
   EXPECT_EQ(header[4] | header[5] << 8 | header[6] << 16, 36 + 32000);
   EXPECT_EQ(std::memcmp(header + 8, "WAVEfmt ", 8), 0);
-  EXPECT_EQ(header[20], 1);   // PCM
-  EXPECT_EQ(header[22], 1);   // mono
+  EXPECT_EQ(header[20], 1);  // PCM
+  EXPECT_EQ(header[22], 1);  // mono
   EXPECT_EQ(header[24] | header[25] << 8, 16000);
   EXPECT_EQ(header[28] | header[29] << 8, 32000 & 0xFFFF);  // byte rate low half
-  EXPECT_EQ(header[34], 16);  // bits per sample
+  EXPECT_EQ(header[34], 16);                                // bits per sample
   EXPECT_EQ(std::memcmp(header + 36, "data", 4), 0);
   EXPECT_EQ(header[40] | header[41] << 8, 32000 & 0xFFFF);
 }
@@ -114,7 +114,8 @@ TEST(HermesProtocol, MultipartFramesFilePart) {
 
 TEST(HermesProtocol, PlainTextFlattensMarkdown) {
   const std::string md =
-      "# Plan\n\n**Bold** and `code` with [a link](http://x).\n\n- one\n* two\n\n```\nls -la\n```\n\n---\n> quoted\n\n\n\nend";
+      "# Plan\n\n**Bold** and `code` with [a link](http://x).\n\n- one\n* two\n\n```\nls -la\n```\n\n---\n> "
+      "quoted\n\n\n\nend";
   EXPECT_EQ(hermes::plainText(md),
             "Plan\n\nBold and code with a link.\n\n\xE2\x80\xA2 one\n\xE2\x80\xA2 two\n\nls -la\n\nquoted\n\nend");
 }

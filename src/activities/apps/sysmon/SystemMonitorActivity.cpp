@@ -114,13 +114,9 @@ void SystemMonitorActivity::sampleTasks() {
     s.state = stateChar(t.eCurrentState);
     s.stackFreeBytes = static_cast<uint32_t>(t.usStackHighWaterMark) * sizeof(StackType_t);
     s.cpuPermille = 0;
-    uint32_t delta = 0;
-    for (const auto& prev : previousTasks_) {
-      if (prev.name == s.name) {
-        delta = s.runtime - prev.runtime;
-        break;
-      }
-    }
+    const auto prev = std::find_if(previousTasks_.begin(), previousTasks_.end(),
+                                   [&s](const TaskSample& p) { return p.name == s.name; });
+    const uint32_t delta = prev != previousTasks_.end() ? s.runtime - prev->runtime : 0;
     // Run-time counters are per task; two cores contribute, so normalise to
     // the combined capacity of both.
     if (previousTotalRuntime_ != 0 && totalDelta > 0) {
@@ -189,9 +185,9 @@ void SystemMonitorActivity::buildOverview() {
   snprintf(buffer, sizeof(buffer), "%u%%, %.2f V", static_cast<unsigned>(powerManager.getBatteryPercentage()),
            battery.readMillivolts() / 1000.0);
   row(StrId::STR_SYSMON_BATTERY, buffer);
-  row(StrId::STR_SYSMON_CHARGING, battery.isCharging()               ? tr(STR_SYSMON_CHARGING_YES)
-                                  : externalKnown && external        ? tr(STR_SYSMON_PLUGGED_FULL)
-                                                                     : tr(STR_SYSMON_ON_BATTERY));
+  row(StrId::STR_SYSMON_CHARGING, battery.isCharging()        ? tr(STR_SYSMON_CHARGING_YES)
+                                  : externalKnown && external ? tr(STR_SYSMON_PLUGGED_FULL)
+                                                              : tr(STR_SYSMON_ON_BATTERY));
   if (envKnown_) {
     snprintf(buffer, sizeof(buffer), "%.1f C, %.0f%% RH", tempC_, humidity_);
     row(StrId::STR_SYSMON_ENVIRONMENT, buffer);
@@ -315,7 +311,6 @@ void SystemMonitorActivity::render(RenderLock&&) {
   scroll_ = std::min(scroll_, std::max(0, rowCount() - visibleRows_));
 
   int y = l.body.y;
-  char buffer[96];
   if (page_ == Page::Overview) {
     for (int i = scroll_; i < static_cast<int>(overview_.size()) && y + lineH <= l.body.y + l.body.height; ++i) {
       const Row& r = overview_[static_cast<size_t>(i)];
@@ -345,12 +340,15 @@ void SystemMonitorActivity::render(RenderLock&&) {
     rightText(colStack, tr(STR_SYSMON_COL_STACK), EpdFontFamily::BOLD);
     renderer.drawLine(l.body.x, y + lineH - 3, l.body.x + l.body.width, y + lineH - 3, 1, true);
     y += lineH;
+    char buffer[96];
     for (int i = scroll_; i < static_cast<int>(tasks_.size()) && y + lineH <= l.body.y + l.body.height; ++i) {
       const TaskSample& t = tasks_[static_cast<size_t>(i)];
       const std::string name =
           renderer.truncatedText(kLabelFont, t.name.c_str(), colCpu - l.body.x - 8, EpdFontFamily::REGULAR);
       renderer.drawText(kLabelFont, l.body.x, y, name.c_str());
-      snprintf(buffer, sizeof(buffer), "%u.%u%%", t.cpuPermille / 10, t.cpuPermille % 10);
+      // uint16_t arithmetic promotes to int, so cast back for %u.
+      snprintf(buffer, sizeof(buffer), "%u.%u%%", static_cast<unsigned>(t.cpuPermille / 10),
+               static_cast<unsigned>(t.cpuPermille % 10));
       rightText(colInfo - 12, buffer, EpdFontFamily::REGULAR);
       if (t.core >= 0) {
         snprintf(buffer, sizeof(buffer), "c%d p%u %c", t.core, t.priority, t.state);
@@ -366,8 +364,7 @@ void SystemMonitorActivity::render(RenderLock&&) {
     GUI.drawSideScrollBar(renderer, l.body, rowCount(), scroll_, visibleRows_);
   }
 
-  GUI.drawActionButton(renderer, l.toggle, page_ == Page::Overview ? tr(STR_SYSMON_SHOW_TASKS)
-                                                                    : tr(STR_SYSMON_SHOW_OVERVIEW),
-                       false);
+  GUI.drawActionButton(renderer, l.toggle,
+                       page_ == Page::Overview ? tr(STR_SYSMON_SHOW_TASKS) : tr(STR_SYSMON_SHOW_OVERVIEW), false);
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }

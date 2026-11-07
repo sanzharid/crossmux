@@ -13,12 +13,12 @@
 
 #include "BleInput.h"
 #include "CrossPointSettings.h"
+#include "HalStorage.h"
 #include "HermesSettingsActivity.h"
 #include "HermesStore.h"
 #include "NetworkStartup.h"
 #include "WifiCredentialStore.h"
 #include "activities/network/WifiSelectionActivity.h"
-#include "HalStorage.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -556,7 +556,7 @@ void HermesChatActivity::onTranscribeDone(hermes::NetJob& job) {
     return;
   }
   if (HERMES_STORE.voiceAutoSend) {
-    sendText(job.text);  // Wi-Fi is already up
+    sendText(job.text);                                                      // Wi-Fi is already up
     if (phase_ == Phase::Idle && pending_ == Pending::None) afterRequest();  // nothing was sent
     return;
   }
@@ -952,15 +952,14 @@ void HermesChatActivity::render(RenderLock&&) {
         renderer.drawText(kLabelFont, l.transcript.x, y, line.text.c_str(), true, EpdFontFamily::BOLD);
       } else {
         const EpdFontFamily::Style style = line.role == Role::Notice ? EpdFontFamily::ITALIC
-                                           : line.role == Role::Book    ? EpdFontFamily::BOLD
-                                                                        : EpdFontFamily::REGULAR;
+                                           : line.role == Role::Book ? EpdFontFamily::BOLD
+                                                                     : EpdFontFamily::REGULAR;
         renderer.drawText(kBodyFont, l.transcript.x, y, line.text.c_str(), true, style);
         if (line.role == Role::Book) {
           // Underline marks it as tappable (opens the book).
           const int w = renderer.getTextWidth(kBodyFont, line.text.c_str(), style);
           renderer.drawLine(l.transcript.x, y + h - 3, l.transcript.x + w, y + h - 3, 1, true);
-          bookTargets_.push_back(
-              TapTarget{static_cast<int16_t>(y), static_cast<int16_t>(y + h), line.message});
+          bookTargets_.push_back(TapTarget{static_cast<int16_t>(y), static_cast<int16_t>(y + h), line.message});
         }
       }
     }
@@ -972,8 +971,8 @@ void HermesChatActivity::render(RenderLock&&) {
 
   // Draft box: the last two wrapped lines, so the cursor end stays visible.
   const auto& metrics = UITheme::getInstance().getMetrics();
-  renderer.drawRoundedRect(l.draft.x, l.draft.y, l.draft.width, l.draft.height, 1,
-                           metrics.optionPopupSelectionRadius, true);
+  renderer.drawRoundedRect(l.draft.x, l.draft.y, l.draft.width, l.draft.height, 1, metrics.optionPopupSelectionRadius,
+                           true);
   {
     const int pad = 8;
     const int innerWidth = std::max(1, l.draft.width - 2 * pad);

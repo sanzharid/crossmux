@@ -158,7 +158,7 @@ class ActivityManager {
   void goToGame2048();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   // The main tab "home" lands on (Settings → Controls → Home screen).
-  MainTab homeMainTab() const;
+  static MainTab homeMainTab();
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
   void focusMainTabContent() { mainTabFocus = MainTabFocus::Content; }
 

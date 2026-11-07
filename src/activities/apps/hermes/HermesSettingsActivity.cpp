@@ -36,12 +36,11 @@ enum Row : int {
 static_assert(kRowCount == HermesSettingsActivity::MENU_ITEMS, "row table and MENU_ITEMS must agree");
 
 const StrId kRowNames[kRowCount] = {
-    StrId::STR_HERMES_SERVER_URL, StrId::STR_HERMES_API_KEY,      StrId::STR_HERMES_MODEL,
-    StrId::STR_HERMES_CONVERSATION, StrId::STR_HERMES_API_STYLE,  StrId::STR_HERMES_TIMEOUT,
-    StrId::STR_HERMES_STT_URL,    StrId::STR_HERMES_STT_KEY,      StrId::STR_HERMES_STT_MODEL,
-    StrId::STR_HERMES_STT_LANGUAGE, StrId::STR_HERMES_AUTO_SEND,  StrId::STR_HERMES_DOWNLOAD_BOOKS,
-    StrId::STR_HERMES_MAX_RECORD,
-    StrId::STR_HERMES_NEW_CHAT,
+    StrId::STR_HERMES_SERVER_URL,   StrId::STR_HERMES_API_KEY,   StrId::STR_HERMES_MODEL,
+    StrId::STR_HERMES_CONVERSATION, StrId::STR_HERMES_API_STYLE, StrId::STR_HERMES_TIMEOUT,
+    StrId::STR_HERMES_STT_URL,      StrId::STR_HERMES_STT_KEY,   StrId::STR_HERMES_STT_MODEL,
+    StrId::STR_HERMES_STT_LANGUAGE, StrId::STR_HERMES_AUTO_SEND, StrId::STR_HERMES_DOWNLOAD_BOOKS,
+    StrId::STR_HERMES_MAX_RECORD,   StrId::STR_HERMES_NEW_CHAT,
 };
 
 bool newConversationRequested = false;
@@ -53,7 +52,8 @@ std::string nextConversationName(const std::string& current) {
   const size_t dash = base.find_last_of('-');
   if (dash != std::string::npos && dash + 1 < base.size() && isdigit(static_cast<unsigned char>(base[dash + 1]))) {
     bool allDigits = true;
-    for (size_t i = dash + 1; i < base.size(); ++i) allDigits = allDigits && isdigit(static_cast<unsigned char>(base[i]));
+    for (size_t i = dash + 1; i < base.size(); ++i)
+      allDigits = allDigits && isdigit(static_cast<unsigned char>(base[i]));
     if (allDigits) {
       number = static_cast<unsigned>(strtoul(base.c_str() + dash + 1, nullptr, 10));
       base.resize(dash);
@@ -202,8 +202,8 @@ void HermesSettingsActivity::buildScreen(UiScreen& screen) {
         rowValues_[i] = orNotSet(store.conversation);
         break;
       case kApiStyle:
-        rowValues_[i] = store.chatApi == HermesStore::ChatApi::Responses ? tr(STR_HERMES_API_RESPONSES)
-                                                                          : tr(STR_HERMES_API_CHAT);
+        rowValues_[i] =
+            store.chatApi == HermesStore::ChatApi::Responses ? tr(STR_HERMES_API_RESPONSES) : tr(STR_HERMES_API_CHAT);
         break;
       case kTimeout:
         rowValues_[i] = secondsLabel(store.timeoutSeconds);

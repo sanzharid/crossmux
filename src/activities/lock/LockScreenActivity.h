@@ -1,9 +1,9 @@
 #pragma once
 
+#include <I18n.h>
+
 #include <cstdint>
 #include <string>
-
-#include <I18n.h>
 
 #include "activities/Activity.h"
 #include "components/themes/BaseTheme.h"

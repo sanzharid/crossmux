@@ -3554,7 +3554,8 @@ void CrossPointWebServer::handlePostHermes() {
     } else if (result == hermesweb::UpdateResult::InvalidKey) {
       message = String(keyName) + " must be under 200 characters, with no spaces.";
     } else {
-      message = String(urlName) + " changed, so enter " + keyName + " again. The saved key is not sent to a new address.";
+      message =
+          String(urlName) + " changed, so enter " + keyName + " again. The saved key is not sent to a new address.";
     }
     server->send(400, "text/plain", message);
   };

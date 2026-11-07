@@ -91,8 +91,8 @@ bool setPin(const std::string& pin) {
   if (!hashPin(salt, pin, digest)) return false;
   Preferences prefs;
   if (!prefs.begin(kNamespace, false)) return false;
-  const bool ok =
-      prefs.putBytes(kSaltKey, salt, sizeof(salt)) == sizeof(salt) && prefs.putBytes(kHashKey, digest, sizeof(digest)) == sizeof(digest);
+  const bool ok = prefs.putBytes(kSaltKey, salt, sizeof(salt)) == sizeof(salt) &&
+                  prefs.putBytes(kHashKey, digest, sizeof(digest)) == sizeof(digest);
   setFails(prefs, 0);
   prefs.end();
   lockoutRestored = true;

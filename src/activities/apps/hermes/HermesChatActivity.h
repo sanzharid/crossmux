@@ -88,7 +88,7 @@ class HermesChatActivity final : public Activity {
   bool discardRecording_ = false;
   Pending pending_ = Pending::None;
   std::string pendingText_;
-  hermes::NetJob* pendingJob_ = nullptr;  // transcription waiting for Wi-Fi
+  hermes::NetJob* pendingJob_ = nullptr;       // transcription waiting for Wi-Fi
   std::vector<std::string> pendingDownloads_;  // book links from the last reply
 
   // --- radios ---

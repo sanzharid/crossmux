@@ -33,6 +33,7 @@
 #include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
 #include "ReadingStatsSettingsActivity.h"
+#include "ScreenLock.h"
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
@@ -40,7 +41,6 @@
 #include "StatusBarSettingsActivity.h"
 #include "TapZoneSettingsActivity.h"
 #include "TextSettingsActivity.h"
-#include "ScreenLock.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/lock/LockScreenActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -200,9 +200,8 @@ void SettingsActivity::rebuildSettingsLists() {
     };
     std::stable_sort(controls.begin(), controls.end(),
                      [&](const SettingInfo& a, const SettingInfo& b) { return rank(a) < rank(b); });
-    auto lockToggle = std::find_if(controls.begin(), controls.end(), [](const SettingInfo& s) {
-      return s.valuePtr == &CrossPointSettings::lockOnWake;
-    });
+    auto lockToggle = std::find_if(controls.begin(), controls.end(),
+                                   [](const SettingInfo& s) { return s.valuePtr == &CrossPointSettings::lockOnWake; });
     controls.insert(lockToggle, SettingInfo::Action(StrId::STR_LOCK_PIN, SettingAction::ScreenLockPin));
 #else
     controls.push_back(SettingInfo::Action(StrId::STR_LOCK_PIN, SettingAction::ScreenLockPin));

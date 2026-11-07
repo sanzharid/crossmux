@@ -206,9 +206,9 @@ void LockScreenActivity::render(RenderLock&&) {
     }
   }
 
-  char buffer[64];
   const uint32_t lockoutS = (ScreenLock::lockoutRemainingMs() + 999) / 1000;
   if (lockoutS > 0) {
+    char buffer[64];
     snprintf(buffer, sizeof(buffer), tr(STR_LOCK_TRY_AGAIN_IN), static_cast<unsigned>(lockoutS));
     centered(UI_12_FONT_ID, l.message, buffer, EpdFontFamily::REGULAR);
   } else if (message_ != StrId::STR_NONE_OPT) {

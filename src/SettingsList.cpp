@@ -251,7 +251,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            StrId::STR_CAT_CONTROLS));
 #if HERMES_HAS_MIC
   emit(SettingInfo::Enum(StrId::STR_AI_BUTTON_HOLD, &CrossPointSettings::aiButtonHold,
-                         {StrId::STR_SLEEP, StrId::STR_HERMES_TALK_TO_HERMES}, "aiButtonHold", StrId::STR_CAT_CONTROLS));
+                         {StrId::STR_SLEEP, StrId::STR_HERMES_TALK_TO_HERMES}, "aiButtonHold",
+                         StrId::STR_CAT_CONTROLS));
 #endif
   // Always persisted; isHiddenOnDevice() hides it when the IMU probe fails.
   emit(SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
