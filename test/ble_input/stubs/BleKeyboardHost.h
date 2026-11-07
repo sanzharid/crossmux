@@ -21,11 +21,12 @@ enum class SpecialKey : uint8_t {
   PageDown
 };
 struct KeyEvent {
-  char ch = 0;  // printable ASCII, or 0 for a special key (as in the SDK)
   SpecialKey special = SpecialKey::None;
   uint8_t keycode = 0;
   uint8_t mods = 0;
   bool pressed = true;
+  // Last, so the tests' positional {special, keycode} initialisers still fit.
+  char ch = 0;  // printable ASCII, or 0 for a special key (as in the SDK)
 };
 }  // namespace freeink
 struct TestBleHost {
