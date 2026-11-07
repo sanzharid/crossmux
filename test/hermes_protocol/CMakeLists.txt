@@ -7,6 +7,7 @@ FetchContent_MakeAvailable(arduinojson)
 
 add_executable(hermes_protocol_tests
   HermesProtocolTest.cpp
+  HermesWebUpdateTest.cpp
   ${REPO_ROOT}/src/activities/apps/hermes/HermesProtocol.cpp
 )
 target_include_directories(hermes_protocol_tests PRIVATE ${REPO_ROOT}/src/activities/apps/hermes)

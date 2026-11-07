@@ -11,7 +11,7 @@ bytes invalidates the cache; the output value is left unchanged.
 
 ## `book.bin`
 
-### Version 11
+### Version 12
 
 `book.bin` stores EPUB metadata plus lookup tables for spine and TOC entries.
 The current firmware writes this version from `BookMetadataCache`.
@@ -20,6 +20,8 @@ The current firmware writes this version from `BookMetadataCache`.
 > Upstream version 10 ignores ambiguous EPUB guide text references. CrossMux uses
 > 11 to include both changes while remaining above every shipped value from
 > either lineage. `BookMetadataCache.cpp` is the source of truth.
+> Version 12 adds the spine `linear` flag. Non-linear resources remain reachable
+> by links but do not contribute to sequential navigation or book progress.
 
 ImHex pattern:
 
@@ -28,7 +30,7 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define EXPECTED_VERSION 11
+#define EXPECTED_VERSION 12
 #define MAX_STRING_LENGTH 65535
 
 struct String {
@@ -53,8 +55,9 @@ struct Metadata {
 
 struct SpineEntry {
     String href [[comment("Resource path")]];
-    u32 cumulativeSize [[comment("Cumulative uncompressed spine size through this entry")]];
+    u32 cumulativeSize [[comment("Cumulative uncompressed linear spine size through this entry")]];
     s16 tocIndex [[comment("Index into TOC, or inherited/previous TOC index when no direct entry exists")]];
+    u8 linear [[comment("0: auxiliary resource; 1: default reading order")]];
 };
 
 struct TocEntry {
@@ -99,6 +102,121 @@ if (parsedSize != fileSize) {
 ```
 
 ## `section.bin`
+
+### Versions 88 / 89
+
+Invalidate completed and partial section caches for font-size-based line spacing,
+ruby space-around layout, RTL focus offsets and TrueType missing-glyph advances
+from upstream versions 69–73. Preserve book metadata and reading progress.
+
+### Versions 86 / 87
+
+Versions 86 (Latin) / 87 (CJK) rebuild completed and partial pagination for the latest justified spacing and bounded greedy wrapping beside drop caps, preventing mid-line hyphens. The binary layout is unchanged from 84/85. Partial sentinels are 196/195, derived from `0xFE - (completeVersion - 28)`.
+
+### Versions 84 / 85
+
+Adds upstream CSS19 explicit inheritance, per-word font IDs, static GIFs, page border boxes and drop caps. Completed and partial caches rebuild. Book metadata remains v12 with the linear flag.
+
+Each TextBlock's BlockStyle stores a signed 32-bit `fontId` after
+`characterSpacing`: the renderer font the line was laid out in, or 0 for the
+section font. Each TextBlock ends with a `hasWordFonts` flag. When set, it is
+followed by three signed 32-bit font ids and one slot byte per word: 0 draws the
+word in the block's font, `n` in font `n - 1`; bit 0x80 of a slot marks CSS
+small caps (the word text keeps its original case). Mixed-size words share the baseline
+of the tallest font. SD (.cpfont) and vector fonts use sized variants for
+headings, CSS font-size blocks, inline runs and drop caps. A font-size span
+holding a whole paragraph sizes that paragraph.
+
+Pages gain two element types. `TAG_PageDropCap` (4) is an initial letter drawn
+scaled up from a font's glyph: position (its `yPos` is the baseline of the last
+spanned line), the renderer font id, the scale in 1/256ths, the word style and
+up to 12 bytes of UTF-8 text. `TAG_PageBorderBox` (5) is a CSS border and/or
+background shade around one page's slice of a block element: position, size,
+width and style for the top, right, bottom and left edges (a side split off by a
+page break has width 0), and a shade flag.
+
+Layout changes keep headings with following content and avoid leaving a
+paragraph's first line alone at a page bottom or its last line alone at a page
+top. Preserved whitespace and inherited block emphasis affect word placement
+and styles. Inline `<br>` breaks omit paragraph spacing, while standalone and
+consecutive breaks add blank lines.
+
+Table columns are sized from a markup pre-scan rather than equal widths.
+Bordered tables frame each grid cell with `PageBorderBox` elements. Cells honor
+CSS padding in grid and stacked layouts. Plain-text rows share a 160-token /
+2 KB budget; rows containing blocks or images use full-width flow to preserve
+paragraphs and illustrations. Older sections are rebuilt for the serialized
+font data, page elements and layout changes.
+
+CSS cache version 16 adds a boolean `preserveWhitespace` byte after `initialLetter`
+and uses defined-property bit 30 for `white-space`.
+CSS cache version 17 stores rules in source order and retains nonadjacent repeated
+selectors so equal-specificity declarations cascade in stylesheet order.
+
+CSS cache version 18 adds a border-component byte after the four border sides.
+Bits 0-3 mark declared widths and bits 4-7 mark declared styles, in top, right,
+bottom, left order. Width and style declarations cascade independently.
+
+CSS cache version 19 extends the serialized `font-style` and `font-weight` enum
+bytes with value 2 for `inherit` (0 normal, 1 italic/bold), so an explicit
+inheritance survives the cache and resolves against the parent style.
+
+### Versions 82 / 83
+
+Adds a one-byte `bool verticalBottomAlign` immediately after
+`paragraphAlignment` in the 47-byte section header. Complete versions are
+82 (Latin) / 83 (CJK); partial sentinels are 200 / 199, derived with
+`0xFE - (completeVersion - 28)`. Early PR builds used overlapping 79/80
+versions, so the final format skips 80/81 to avoid accepting their layouts.
+
+The option redistributes spare height between lines on non-final text pages,
+with a half-line-height cap per gap. Grid-table, image and rule pages retain
+fixed geometry; the final chapter page stays top-aligned. Links move with their
+text lines. Both section-cache identity and clipping layout signatures include
+the toggle. Complete and partial layouts rebuild on an option/version change;
+book metadata and source-offset reading/clipping anchors remain available.
+
+### Versions 78 / 79
+
+Unified firmware uses version **79**; the Latin counter is **78**. Partial
+versions are **203 / 204** respectively, derived as
+`0xFE - (completeVersion - 28)`. `book.bin` stays at version **11** and per-book
+[`BookKey`](../lib/Epub/BookKey.h) AES-128 payloads stay **16 bytes**; neither
+unchanged layout needs a new counter.
+
+Each TextBlock writes `numWords` (uint16), `hasFocus` (uint8), `textBytes`
+(uint16), and then the new `paragraphStartWord` (uint16). The latter is the visual
+index of the paragraph's first logical word; `UINT16_MAX` means a continuation
+line. The arena begins with one source range per word: two uint32 chapter-visible
+Unicode-codepoint offsets, `[start, end)`, with `UINT32_MAX` for unavailable
+positions. Ranges follow words through BiDi ordering and wrapping, including
+codepoints absorbed by NFC composition. Existing text-offset/x-position/focus/
+style/text arrays follow. Style bit `0x80` marks a discretionary hyphen and is
+masked before interpreting the glyph style, so clipping removes it independently
+of source length.
+
+These versions incorporate upstream section versions 52–55, including font-sized
+solid rectangles for missing U+2588/U+25A0 redaction symbols. Rebuild complete and
+partial pagination so the new widths, positions, paragraph markers and clipping
+anchors agree. Retain metadata, source-offset progress, ruby fields, and the local
+BlockStyle/header order. The existing hollow placeholder remains for other
+unsupported visible characters.
+
+### Versions 76 / 77
+
+Adds `paragraphIndentSpaces` (0–5, default 3) immediately after the retained
+`firstLineIndent` byte. Complete and partial caches rebuild on width changes.
+The partial sentinels are 206/205, derived from the complete versions with
+`0xFE - (completeVersion - 28)` so old partial layouts also rebuild.
+Only forced Western indentation uses this width; Auto follows CSS and Chinese
+retains two characters. Paragraph spacing remains independent.
+
+These versions integrate upstream character spacing, word spacing, list layout
+and Hangul wrapping. The section header adds signed `characterSpacing` and
+unsigned `wordSpacingPercent` after `collectTouchLinks`. TextBlock's BlockStyle
+adds `characterSpacing` after `directionDefined`. Existing caches rebuild;
+CrossMux paragraph spacing levels, first-line indentation and touch-link flags
+remain in the header.
 
 ### Versions 72 / 73
 
@@ -221,8 +339,8 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define LATIN_VERSION 72
-#define CHINESE_VERSION 73
+#define LATIN_VERSION 86
+#define CHINESE_VERSION 87
 #define MAX_STRING_LENGTH 65535
 #define FOOTNOTE_NUMBER_LEN 32
 #define FOOTNOTE_HREF_LEN 256
@@ -242,7 +360,9 @@ fn format_string(String s) {
 enum PageElementTag : u8 {
     TAG_PageLine = 1,
     TAG_PageImage = 2,
-    TAG_PageHorizontalRule = 3
+    TAG_PageHorizontalRule = 3,
+    TAG_PageDropCap = 4,
+    TAG_PageBorderBox = 5
 };
 
 enum WordStyle : u8 {
@@ -253,7 +373,8 @@ enum WordStyle : u8 {
     UNDERLINE = 4,
     STRIKETHROUGH = 8,
     SUP = 16,
-    SUB = 32
+    SUB = 32,
+    DISCRETIONARY_HYPHEN = 128  // trailing hyphen inserted by line breaking
 };
 
 enum TextAlign : u8 {
@@ -279,27 +400,42 @@ struct BlockStyle {
     bool textIndentDefined;
     bool isRtl;
     bool directionDefined;
+    s8 characterSpacing;
+    s32 fontId;
+};
+
+struct SourceRange {
+    u32 start [[comment("Chapter codepoint offset; 0xFFFFFFFF if unknown")]];
+    u32 end [[comment("Exclusive chapter codepoint offset")]];
 };
 
 struct TextBlock {
     u16 wordCount;
     u8 hasFocus;
     u16 textBytes [[comment("Total size of text[], including one NUL per word")]];
+    u16 paragraphStartWord [[comment("Visual paragraph-start index, 0xFFFF for continuation")]];
 
     if (wordCount > 0) {
+        SourceRange sourceRanges[wordCount];
         u16 textOff[wordCount] [[comment("Byte offset of word i's text within text[]")]];
         s16 wordXPos[wordCount];
         if (hasFocus != 0) {
             u16 wordFocusSuffixX[wordCount] [[comment("Suffix x offset from word start")]];
         }
-        WordStyle wordStyle[wordCount];
+        u8 wordStyle[wordCount] [[comment("WordStyle flags; 0x80 marks a discretionary hyphen")]];
         if (hasFocus != 0) {
             u8 wordFocusBoundary[wordCount] [[comment("UTF-8 byte boundary between bold prefix and suffix")]];
         }
         char text[textBytes] [[comment("All words back to back, each NUL-terminated")]];
     }
 
+    String rubyTexts[wordCount] [[comment("One annotation per word, empty when absent")]];
     BlockStyle blockStyle;
+    u8 hasWordFonts;
+    if (hasWordFonts != 0) {
+        s32 wordFonts[3];
+        u8 wordFontSlot[wordCount] [[comment("0 = block font, n = wordFonts[n - 1]; bit 0x80 = small caps")]];
+    }
 };
 
 struct ImageBlock {
@@ -328,6 +464,30 @@ struct PageHorizontalRule {
     u8 thickness;
 };
 
+struct PageDropCap {
+    s16 xPos;
+    s16 yPos;  // baseline of the last spanned line
+    s32 fontId;
+    u16 scale256;
+    WordStyle style;
+    u8 length;
+    char text[length];
+};
+
+struct BorderSide {
+    u8 width;
+    u8 style;  // 0 none, 1 solid, 2 double, 3 dotted, 4 dashed
+};
+
+struct PageBorderBox {
+    s16 xPos;
+    s16 yPos;
+    u16 width;
+    u16 height;
+    BorderSide sides[4];  // top, right, bottom, left
+    bool shaded;
+};
+
 struct PageElement {
     PageElementTag pageElementType;
     if (pageElementType == TAG_PageLine) {
@@ -336,6 +496,10 @@ struct PageElement {
         PageImage pageImage [[inline]];
     } else if (pageElementType == TAG_PageHorizontalRule) {
         PageHorizontalRule horizontalRule [[inline]];
+    } else if (pageElementType == TAG_PageDropCap) {
+        PageDropCap dropCap [[inline]];
+    } else if (pageElementType == TAG_PageBorderBox) {
+        PageBorderBox borderBox [[inline]];
     } else {
         std::error(std::format("Unknown page element type: {}", pageElementType));
     }
@@ -389,7 +553,9 @@ struct SectionBin {
     float lineCompression;
     u8 extraParagraphSpacing;
     u8 firstLineIndent;
+    u8 paragraphIndentSpaces; // forced Western indent, 0..5
     u8 paragraphAlignment;
+    bool verticalBottomAlign;
     u16 viewportWidth;
     u16 viewportHeight;
     bool hyphenationEnabled;
@@ -397,6 +563,8 @@ struct SectionBin {
     u8 imageRendering;
     bool focusReadingEnabled;
     bool collectTouchLinks;
+    s8 characterSpacing;
+    u8 wordSpacingPercent;
 
     u16 pageCount;
     u32 pageLutOffset;
@@ -440,7 +608,7 @@ if (parsedSize != fileSize) {
 }
 ```
 
-## TXT reader cache
+## Legacy TXT reader cache
 
 TXT reader state is stored below `.crosspoint/txt_<path-hash>/`.
 
@@ -489,6 +657,40 @@ Chapter offsets are independent of pagination. Selecting an offset outside the
 known page-index prefix opens it directly and keeps a fixed 32-page local
 navigation history, so jumping does not synchronously paginate the intervening
 text or grow RAM with book length.
+
+## Reflowed TXT/Markdown source map
+
+Reflowed TXT/Markdown metadata and HTML use conversion marker 2 and the EPUB
+book/section formats above. Generated chapter IDs are `txt-<source-byte-offset>`.
+Titles stay disk-backed; each chapter boundary is consumed during parsing without
+retaining the full chapter list. Old source progress is never deleted or rewritten
+by migration. Old page-number progress resolves through version 4–8 legacy indexes.
+Failed conversion, invalid maps or unresolved target pages preserve old progress.
+
+`txt-map.bin` version 1 is little-endian. Its 16-byte header is:
+
+| Offset | Field |
+|---:|---|
+| 0 | `uint32 magic = 0x4D545854` (`TXTM`) |
+| 4 | `uint32 sourceSize` |
+| 8 | `uint32 recordCount` |
+| 12 | `uint16 recordSize = 12` |
+| 14 | `uint8 version = 1` |
+| 15 | `uint8 encoding` (0 unknown/ASCII, 1 UTF-8, 2 GBK) |
+
+Each 12-byte run stores `uint32 sourceOffset`, `uint32 visibleOffset`, `uint8
+sourceCharacterWidth`, `uint8 visibleStep` and `uint16 reserved = 0`.
+A new record begins when source width or visible step changes. The final record
+has source offset equal to `sourceSize` and zero width/step; preceding offsets
+increase. Dropped trailing spaces, CR/LF and the BOM have step 0; HTML entities
+count as their decoded visible Unicode codepoint. Source offsets inside a multibyte
+character resolve to that character. Lookup binary-searches records on disk. The inverse lookup searches visible
+offsets, then resolves the source position through `chapters.bin` for the current
+TOC title and chapter navigation, without retaining chapter tables.
+Chapter lookup treats visible offset 0 (the generated leading body newline) as
+position 1, the first source-mapped visible position, including any dropped BOM.
+Maps publish from `.tmp` only after successful conversion and flush. Books at or
+above 4GiB and chapter counts exceeding the existing 16-bit TOC budget fail safely.
 
 ## Reading background cache
 
@@ -560,3 +762,141 @@ initialized the display and physically rendered its startup verification page.
 Only after confirmation cancels rollback may the old firmware slot be erased
 and rebuilt as a font cache. If that copy is interrupted or fails, the
 uncommitted header remains invalid and the selected font loads from SD.
+## CLX1 — library index (`.crosspoint/library.idx`)
+
+Written by `lib/LibraryIndex/LibraryBuilder.cpp`, read by `LibraryIndexFile`. One
+file describing every book on the card, so the shelf can sort and search
+thousands of titles without opening any of them.
+
+Format version 2. An index written by another version fails validation on open
+and is rebuilt; that is the entire migration mechanism.
+
+### Layout
+
+| Section | Offset | Contents |
+|---|---|---|
+| Header | 0 | 64 bytes, `ClixHeader` |
+| Folders | `folderStart` | length-prefixed paths, one per folder |
+| Records | `recordStart` | `bookCount` × 128-byte `ClixRecord` |
+| Permutations | `permStart` | `bookCount` u16 author order, then `bookCount` u16 arrival order |
+| Name blob | `nameStart` | per record: path hash, name, canonical author, title, source author (see below) |
+
+The arrival permutation runs oldest first, keyed by the record's FAT
+modification time (when the file landed on the card); `firstSeen` — the
+build-assigned discovery counter — breaks ties and carries books whose
+filesystem reports no time. Fold version 3 introduced the timestamp key; a
+fold bump rebuilds ranks while preserving `firstSeen`.
+Fold version 4 preserves leading articles in title sort and search keys.
+
+Sections are 512-byte aligned so each starts on an SD block boundary.
+
+### Records are exactly 128 bytes
+
+A fixed stride is what lets the reader seek straight to record *n* without an
+offset table, and read a screenful in one 4 KB block. `static_assert` enforces it.
+
+Each record carries `fold[96]`, the title normalised for search and sorting —
+accents stripped, case dropped, leading articles preserved — and `authorKey[12]`,
+the author's words folded and sorted so that "Victor Hugo" and "Hugo Victor" group as
+one person. `authorKey` is a GROUPING key, not an ordering one: the shelf orders by
+surname, derived separately from the display name.
+
+The byte before the folded title records metadata extraction status: not
+attempted, extracted, or failed. The final four bytes contain the packed FAT
+modification date and time returned by SdFat. A zero timestamp is not trusted.
+These fields occupy the alignment and reserved bytes from version 1, so the
+record remains exactly 128 bytes.
+
+The header records whether EPUB metadata extraction was enabled for the build.
+This prevents a metadata-disabled rebuild from making filename fallbacks look
+fresh to a later metadata-enabled build.
+
+### The name blob
+
+Per record, at `nameStart + nameOff`:
+
+```text
+[u64 pathHash]    FNV-1a fingerprint of the complete path
+[nameLen bytes]  filename, without the directory
+[u8][author]     display author, one spelling chosen per authorKey across the library
+[u8][title]      the book's own title, or length 0 if it never gave one
+[u8][source]     cleaned author spelling before the library-wide spelling vote
+```
+
+The filename must stay the first textual field and stay the filename: `readPath`
+rebuilds a book's path from it, so writing the display title there makes the book
+impossible to open. That was a real defect, and it is why title has its own field.
+
+The source author is separate from the displayed canonical author so a later
+rebuild can repeat the spelling vote after books are added or removed. Existing
+display reads still stop at the author or title fields and retain their offsets.
+
+### Freshness and unchanged rebuilds
+
+Reconciliation treats the persisted 64-bit complete-path fingerprint as the
+book identity. Metadata is reused only when the fingerprint, size, nonzero FAT
+timestamp, fold version, metadata mode, and expected extraction status agree.
+EPUBs with a zero timestamp or a previous extraction failure are parsed again.
+
+If every current record reuses metadata, the old and new counts agree, and no
+unreadable entry was seen, the staging files are discarded and the live index is
+left byte-for-byte unchanged. A normal rebuild action is therefore a freshness
+check, not a forced metadata reread.
+
+### Header flags
+
+`RANKS_DEGRADED` says one or more orders fell back to walk order because a
+checked sort allocation failed. Title and author each use a phase-local
+`SortKey[bookCount]` allocation (14 bytes per book, 57,344 bytes at the 4,096-book
+format ceiling); the first array is released before the second is requested.
+Sorting is therefore best effort through the full format limit rather than
+being disabled at an arbitrary library size.
+
+`DEDUP_DEGRADED` says a directory exceeded the fixed 1024-entry duplicate-key
+buffer, or that its fallible 8 KiB allocation failed. The walk still indexes
+every enumerated book; it only stops remembering additional identities for
+duplicate-dirent detection, so a damaged FAT may expose duplicates but cannot
+make a real book disappear.
+
+`selfSize` is the expected file size. Comparing it against the real one is a free
+truncation guard: a build cut short by a power failure cannot pass.
+
+## Clipping store (`/.crosspoint/clippings/epub_<path-hash>.bin`)
+
+Version 4 retains the version 3 header and page-local range fields. After each
+record's layout signature it stores `startOffset` and `endOffset` (uint32 chapter
+codepoint range, end exclusive; UINT32_MAX means unavailable), `syncRevision`
+(uint64), `pendingUpload` (one byte), and a 65-byte NUL-terminated sync ID. The
+chapter title, text length, and text follow. Versions 1–3 remain readable.
+
+Stable IDs are saved before upload. A sibling `.deleted` file stores fixed
+65-byte IDs awaiting server acknowledgement. Deletions are queued before the
+local record is removed and retried on the next enabled manual sync. A `.bak`
+file is recovered if power interrupted replacement of the main store.
+
+Clipping header strings are limited to 4 KiB on both reads and writes. A failed
+load leaves no usable index and disables writes until a successful load. The
+index is allocated with checked, bounded growth and released on unload.
+
+Book moves rename the store and its `.deleted` journal (plus recovery sidecars)
+together. The stored source path is informational and is refreshed on the next
+save; the current file path selects the store. Local book deletion cleans up all
+of these sidecars but preserves the independent `My Clippings.txt` export.
+
+### Sleep-cover transaction
+
+`/sleep.bmp.txn` is a private version **1**, three-byte record: byte 0 is the
+version (`1`), byte 1 is the previous `SLEEP_SCREEN_MODE`, and byte 2 is `0` or
+`1` indicating whether a previous `/sleep.bmp` existed. It is written and closed
+before renaming the previous BMP to `/sleep.bmp.bak`. Its removal, after BMP
+validation and a successful settings save, commits the replacement. Recovery
+with a valid marker restores the old image/mode before clearing the marker;
+malformed markers and failed rollback preserve recovery files. Legacy `.bak`
+files without a marker remain recoverable. Existing font, book, paging and
+settings binary layouts are unchanged.
+
+The transparent overlay has its own target `/sleep-overlay.bmp` and independent
+`/sleep-overlay.bmp.part`, `.bak`, and `.txn` files. Its marker uses the same
+version 1 three-byte schema. Recovery checks both targets; committing a normal
+sleep image and committing an overlay never overwrite one another's image or
+transaction files.

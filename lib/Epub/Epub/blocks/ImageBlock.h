@@ -22,10 +22,9 @@ class ImageBlock final : public Block {
   int16_t getWidth() const { return width; }
   int16_t getHeight() const { return height; }
 
-  bool imageExists() const;
   bool hasValidCache() const;
   bool needsDecode() const;
-  bool ensureExtracted();
+  bool ensureExtracted(CancelCheck cancellation = {});
   void renderPlaceholder(GfxRenderer& renderer, int x, int y) const;
   static void clearSessionRenderFailures();
 
@@ -41,7 +40,7 @@ class ImageBlock final : public Block {
   // render, via this callback (function pointer + context, not std::function —
   // this is render-loop code). Registered by the reader activity that owns the
   // Epub, cleared on its exit.
-  using ExtractFn = bool (*)(void* ctx, const char* srcPath, const char* destPath);
+  using ExtractFn = bool (*)(void* ctx, const char* srcPath, const char* destPath, CancelCheck cancellation);
   static void setExtractor(void* ctx, ExtractFn fn);
 
   // Reader-scoped resampling filter for inline images. The reader owns the
@@ -57,8 +56,8 @@ class ImageBlock final : public Block {
   bool isEmpty() override { return false; }
 
   void render(GfxRenderer& renderer, const int x, const int y);
-  bool render(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy);
-  bool cacheDecodedImage(GfxRenderer& renderer, int x, int y);
+  bool render(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, ImageRenderError* error = nullptr);
+  bool cacheDecodedImage(GfxRenderer& renderer, int x, int y, CancelCheck cancellation = {});
   bool serialize(HalFile& file);
   static std::unique_ptr<ImageBlock> deserialize(HalFile& file);
 
@@ -72,5 +71,6 @@ class ImageBlock final : public Block {
   static ExtractFn extractFn;
   static bool bilinearScaling;  // reader-pushed resampling filter
 
-  bool renderInternal(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, DecodeOutput output);
+  bool renderInternal(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, DecodeOutput output,
+                      ImageRenderError* error = nullptr, CancelCheck cancellation = {});
 };

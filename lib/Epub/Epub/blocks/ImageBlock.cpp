@@ -44,8 +44,6 @@ void ImageBlock::setBilinearScaling(const bool enabled) {
           enabled ? ".b.pxc" : ".pxc");
 }
 
-bool ImageBlock::imageExists() const { return Storage.exists(imagePath.c_str()); }
-
 namespace {
 
 std::string getCachePath(const std::string& imagePath) {
@@ -77,13 +75,10 @@ bool readValidCacheHeader(HalFile& cacheFile, const int expectedWidth, const int
   return cacheFile.size() >= expectedSize;
 }
 
-// Pages are deserialized afresh on each visit. Keep a bounded, allocation-free
-// record so an image that failed renders its placeholder directly for the rest
-// of the reader session instead of paying another placeholder refresh and
-// decode. The reader clears this on entry so transient memory/storage failures
-// are retried.
-constexpr size_t MAX_SESSION_IMAGE_FAILURES = 16;
-uint64_t failedImageHashes[MAX_SESSION_IMAGE_FAILURES];
+// Suppress repeated failures across the BW/grayscale passes of one page render.
+// Clear before the next page render so transient memory/storage failures retry.
+constexpr size_t MAX_RENDER_IMAGE_FAILURES = 16;
+uint64_t failedImageHashes[MAX_RENDER_IMAGE_FAILURES];
 size_t failedImageCount = 0;
 
 uint64_t imagePathHash(const std::string& path) {
@@ -95,7 +90,7 @@ uint64_t imagePathHash(const std::string& path) {
   return hash;
 }
 
-bool imageFailedThisSession(const std::string& path) {
+bool imageFailedThisRender(const std::string& path) {
   const uint64_t hash = imagePathHash(path);
   for (size_t i = 0; i < failedImageCount; i++) {
     if (failedImageHashes[i] == hash) return true;
@@ -104,7 +99,7 @@ bool imageFailedThisSession(const std::string& path) {
 }
 
 void rememberImageFailure(const std::string& path) {
-  if (failedImageCount == MAX_SESSION_IMAGE_FAILURES || imageFailedThisSession(path)) return;
+  if (failedImageCount == MAX_RENDER_IMAGE_FAILURES || imageFailedThisRender(path)) return;
   failedImageHashes[failedImageCount++] = imagePathHash(path);
 }
 
@@ -246,10 +241,6 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
     return false;
   }
 
-  // Use cached dimensions for rendering (they're the actual decoded size)
-  expectedWidth = cachedWidth;
-  expectedHeight = cachedHeight;
-
   LOG_DBG("IMG", "Loading from cache: %s (%dx%d)", cachePath.c_str(), cachedWidth, cachedHeight);
 
   const int bytesPerRow = (cachedWidth + 3) / 4;  // 2 bits per pixel, 4 pixels per byte
@@ -342,20 +333,23 @@ bool ImageBlock::hasValidCache() const {
   return readValidCacheHeader(cacheFile, width, height, cachedWidth, cachedHeight);
 }
 
-bool ImageBlock::needsDecode() const { return !imageFailedThisSession(imagePath) && !hasValidCache(); }
+bool ImageBlock::needsDecode() const { return !imageFailedThisRender(imagePath) && !hasValidCache(); }
 
-bool ImageBlock::ensureExtracted() {
+bool ImageBlock::ensureExtracted(CancelCheck cancellation) {
+  if (cancellation.isCancelled()) return false;
   if (Storage.exists(imagePath.c_str())) return true;
   if (srcPath.empty() || !extractFn) {
-    rememberImageFailure(imagePath);
+    if (!cancellation) rememberImageFailure(imagePath);
     return false;
   }
 
   LOG_DBG("IMG", "Lazy-extracting %s -> %s", srcPath.c_str(), imagePath.c_str());
-  if (extractFn(extractCtx, srcPath.c_str(), imagePath.c_str())) return true;
+  if (extractFn(extractCtx, srcPath.c_str(), imagePath.c_str(), cancellation)) return true;
 
+  if (cancellation.isCancelled()) return false;
+  // A failed speculative extraction must remain retryable in the foreground.
   LOG_ERR("IMG", "Lazy extraction failed: %s", srcPath.c_str());
-  rememberImageFailure(imagePath);
+  if (!cancellation) rememberImageFailure(imagePath);
   return false;
 }
 
@@ -374,16 +368,23 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
   (void)render(renderer, x, y, PixelCachePolicy::LoadIntoRam);
 }
 
-bool ImageBlock::render(GfxRenderer& renderer, const int x, const int y, const PixelCachePolicy cachePolicy) {
-  return renderInternal(renderer, x, y, cachePolicy, DecodeOutput::FrameBufferAndCache);
+bool ImageBlock::render(GfxRenderer& renderer, const int x, const int y, const PixelCachePolicy cachePolicy,
+                        ImageRenderError* error) {
+  return renderInternal(renderer, x, y, cachePolicy, DecodeOutput::FrameBufferAndCache, error);
 }
 
-bool ImageBlock::cacheDecodedImage(GfxRenderer& renderer, const int x, const int y) {
-  return renderInternal(renderer, x, y, PixelCachePolicy::Stream, DecodeOutput::CacheOnly);
+bool ImageBlock::cacheDecodedImage(GfxRenderer& renderer, const int x, const int y, CancelCheck cancellation) {
+  return renderInternal(renderer, x, y, PixelCachePolicy::Stream, DecodeOutput::CacheOnly, nullptr, cancellation);
 }
 
 bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y, const PixelCachePolicy cachePolicy,
-                                const DecodeOutput output) {
+                                const DecodeOutput output, ImageRenderError* error, CancelCheck cancellation) {
+  if (cancellation.isCancelled()) {
+    if (error) *error = ImageRenderError::Cancelled;
+    return false;
+  }
+  ImageRenderError decodeError = ImageRenderError::Failed;
+  if (error) *error = ImageRenderError::Failed;
   const bool renderToFramebuffer = output == DecodeOutput::FrameBufferAndCache;
 
   // The font-prewarm scan pass only accumulates glyphs; an image contributes
@@ -392,7 +393,10 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   // page view. Skip it here. The image still draws in the real BW/grayscale
   // passes; on first view this just moves the one-time decode to the BW pass.
   FontCacheManager* fcm = renderer.getFontCacheManager();
-  if (renderToFramebuffer && fcm && fcm->isScanning()) return true;
+  if (renderToFramebuffer && fcm && fcm->isScanning()) {
+    if (error) *error = ImageRenderError::None;
+    return true;
+  }
 
   LOG_DBG("IMG", "Rendering image at %d,%d: %s (%dx%d)", x, y, imagePath.c_str(), width, height);
 
@@ -413,10 +417,11 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   // is orientation-aware and returns true when no strip is active, so the BW
   // pass and non-tiled controllers render the image exactly as before.
   if (renderToFramebuffer && !renderer.glyphIntersectsStrip(x, y, x + width - 1, y + height - 1)) {
+    if (error) *error = ImageRenderError::None;
     return true;
   }
 
-  if (imageFailedThisSession(imagePath)) {
+  if (imageFailedThisRender(imagePath)) {
     if (renderToFramebuffer) renderPlaceholder(renderer, x, y);
     return false;
   }
@@ -424,15 +429,21 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   // Try to render from cache first
   std::string cachePath = getCachePath(imagePath);
   if (renderToFramebuffer && renderFromCache(renderer, cachePath, x, y, width, height, cachePolicy)) {
+    if (error) *error = ImageRenderError::None;
     return true;
   }
   if (!renderToFramebuffer && hasValidCache()) {
+    if (error) *error = ImageRenderError::None;
     return true;
   }
 
   // The build only header-probed the image for dimensions; pull the actual
   // file out of the book now, on first visit to the page.
-  if (!srcPath.empty() && !ensureExtracted()) {
+  if (!srcPath.empty() && !ensureExtracted(cancellation)) {
+    if (cancellation.isCancelled()) {
+      if (error) *error = ImageRenderError::Cancelled;
+      return false;
+    }
     if (renderToFramebuffer) renderPlaceholder(renderer, x, y);
     return false;
   }
@@ -444,7 +455,7 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
     HalFile file;
     if (!Storage.openFileForRead("IMG", imagePath, file)) {
       LOG_ERR("IMG", "Image file not found: %s", imagePath.c_str());
-      rememberImageFailure(imagePath);
+      if (renderToFramebuffer) rememberImageFailure(imagePath);
       if (renderToFramebuffer) renderPlaceholder(renderer, x, y);
       return false;
     }
@@ -453,7 +464,7 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
 
   if (fileSize == 0) {
     LOG_ERR("IMG", "Image file is empty: %s", imagePath.c_str());
-    rememberImageFailure(imagePath);
+    if (renderToFramebuffer) rememberImageFailure(imagePath);
     if (renderToFramebuffer) renderPlaceholder(renderer, x, y);
     return false;
   }
@@ -472,11 +483,13 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   config.cachePath = cachePath;      // Enable caching during decode
   config.output = output;
   config.bilinearScaling = bilinearScalingEnabled();
+  config.error = &decodeError;
+  config.cancellation = cancellation;
 
   ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(imagePath);
   if (!decoder) {
     LOG_ERR("IMG", "No decoder found for image: %s", imagePath.c_str());
-    rememberImageFailure(imagePath);
+    if (renderToFramebuffer) rememberImageFailure(imagePath);
     if (renderToFramebuffer) renderPlaceholder(renderer, x, y);
     return false;
   }
@@ -485,13 +498,19 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
 
   bool success = decoder->decodeToFramebuffer(imagePath, renderer, config);
   if (!success) {
+    if (decodeError == ImageRenderError::Cancelled || cancellation.isCancelled()) {
+      if (error) *error = ImageRenderError::Cancelled;
+      return false;
+    }
     LOG_ERR("IMG", "Failed to decode image: %s", imagePath.c_str());
-    rememberImageFailure(imagePath);
+    if (error) *error = decodeError;
+    if (renderToFramebuffer && decodeError != ImageRenderError::OutOfMemory) rememberImageFailure(imagePath);
     if (renderToFramebuffer) renderPlaceholder(renderer, x, y);
     return false;
   }
 
   LOG_DBG("IMG", "Decode successful");
+  if (error) *error = ImageRenderError::None;
   return true;
 }
 

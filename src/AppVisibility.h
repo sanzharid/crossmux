@@ -26,7 +26,8 @@ enum class AppId : uint8_t {
   Hermes = 17,
   S3xy = 18,
   SystemMonitor = 19,
-  Count = 20,
+  Library = 20,  // upstream uses 17, which this fork already gave to Hermes
+  Count = 21,
 };
 
 constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }

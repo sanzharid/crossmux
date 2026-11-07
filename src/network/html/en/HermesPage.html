@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hermes - CrossMux</title>
+    <style>
+      .hermes-form label { display: block; margin: 12px 0 4px; color: var(--label-color); font-size: 0.9em; }
+      /* 16px stops iOS from zooming the page when a field gets focus. */
+      .hermes-form input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+      }
+      .hermes-form .save-btn { width: 100%; }
+      #status { padding: 10px; border-radius: 6px; margin: 16px 0; display: none; }
+      #status.ok { background: #d4edda; color: #155724; display: block; }
+      #status.err { background: #f8d7da; color: #721c24; display: block; }
+      .warn { background: #fff3cd; color: #664d03; padding: 10px; border-radius: 6px; }
+      .hint { color: var(--label-color); font-size: 0.85em; }
+      [hidden] { display: none; }
+    </style>
+  <link rel="stylesheet" href="/assets/web.css" />
+  <link rel="icon" type="image/svg+xml" href="/assets/crosspoint-icon.svg" />
+  </head>
+  <body class="web-ui">
+    <!--#include file="../shared/Header.html.inc" -->
+<main class="page-content">
+
+    <p class="warn" id="apWarning" hidden>
+      This device's hotspot is an open network, so anyone nearby could read a key sent over it. If you can, connect the
+      device and your phone to your own Wi-Fi first.
+    </p>
+
+    <div id="status" role="status"></div>
+
+    <form id="form" class="hermes-form" autocomplete="off">
+      <div class="card">
+        <h2>Chat</h2>
+        <label for="chatUrl">Hermes URL</label>
+        <input id="chatUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.10:8642" />
+        <label for="chatKey">API key</label>
+        <input id="chatKey" type="password" autocapitalize="off" spellcheck="false" autocomplete="new-password" />
+        <p class="hint" id="chatKeyHint"></p>
+      </div>
+
+      <div class="card">
+        <h2>Voice (optional)</h2>
+        <label for="sttUrl">Speech-to-text URL</label>
+        <input id="sttUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.10:8000/v1/audio/transcriptions" />
+        <label for="sttKey">Speech-to-text key</label>
+        <input id="sttKey" type="password" autocapitalize="off" spellcheck="false" autocomplete="new-password" />
+        <p class="hint" id="sttKeyHint"></p>
+      </div>
+
+      <button id="save" class="save-btn" type="submit">Save</button>
+      <p class="hint">Saved keys are never shown here. Keys are sent without encryption, so only use this on a network you trust.</p>
+    </form>
+
+    </main>
+<!--#include file="../shared/Footer.html.inc" -->
+    <script>
+      const el = (id) => document.getElementById(id);
+
+      function showStatus(text, ok) {
+        const status = el('status');
+        status.textContent = text;
+        status.className = ok ? 'ok' : 'err';
+      }
+
+      function showConfig(config) {
+        el('chatUrl').value = config.chatUrl;
+        el('sttUrl').value = config.sttUrl;
+        el('chatKey').value = '';
+        el('sttKey').value = '';
+        el('chatKeyHint').textContent = config.hasChatKey ? 'A key is saved. Leave blank to keep it.' : 'No key saved yet.';
+        el('sttKeyHint').textContent = config.hasSttKey ? 'A key is saved. Leave blank to keep it.' : 'No key saved yet.';
+        el('apWarning').hidden = !config.apMode;
+      }
+
+      async function load() {
+        const res = await fetch('/api/hermes');
+        if (!res.ok) throw new Error(await res.text());
+        showConfig(await res.json());
+      }
+
+      el('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const body = { chatUrl: el('chatUrl').value, sttUrl: el('sttUrl').value };
+        // A blank key field means "keep the saved key", so it is left out of the request.
+        if (el('chatKey').value) body.chatKey = el('chatKey').value;
+        if (el('sttKey').value) body.sttKey = el('sttKey').value;
+
+        el('save').disabled = true;
+        try {
+          const res = await fetch('/api/hermes', { method: 'POST', body: JSON.stringify(body) });
+          if (!res.ok) throw new Error(await res.text());
+          showConfig(await res.json());
+          showStatus('Saved. Open Hermes on the device to use it.', true);
+        } catch (error) {
+          showStatus(error.message, false);
+        } finally {
+          el('save').disabled = false;
+        }
+      });
+
+      load().catch((error) => showStatus('Could not load settings: ' + error.message, false));
+    </script>
+  </body>
+</html>

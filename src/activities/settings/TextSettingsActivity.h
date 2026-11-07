@@ -1,5 +1,6 @@
 #pragma once
 
+#include <SdCardFontCache.h>
 #include <SdCardFontRegistry.h>
 
 #include <atomic>
@@ -21,7 +22,7 @@ class TextSettingsActivity final : public UiTabListActivity {
  public:
   enum class Tab : uint8_t { Family, Size, Layout, Style, Count };
   enum class InitialFontState : uint8_t { Unchanged, Changed };
-  enum class StartMode : uint8_t { Interactive, PreviewOnly, PreloadThenExit };
+  enum class StartMode : uint8_t { Interactive, PreviewOnly, AskThenExit, PreloadThenExit };
 
   TextSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const SdCardFontRegistry* registry,
                        Tab initialTab = Tab::Family, InitialFontState initialFontState = InitialFontState::Unchanged,
@@ -36,7 +37,18 @@ class TextSettingsActivity final : public UiTabListActivity {
  private:
   // Row indices per tab. enum class (not plain enum) so a LayoutRow can't be
   // silently confused with a StyleRow of equal value.
-  enum class LayoutRow { LineSpacing, ParaSpacing, FirstLineIndent, Alignment, ScreenMargin, Count };
+  enum class LayoutRow {
+    LineSpacing,
+    WordSpacing,
+    CharacterSpacing,
+    ParaSpacing,
+    FirstLineIndent,
+    ParaIndentation,
+    Alignment,
+    ScreenMargin,
+    VerticalBottomAlign,
+    Count
+  };
   enum class StyleRow {
     FocusReading,
     ReadingGuideLine,
@@ -52,6 +64,7 @@ class TextSettingsActivity final : public UiTabListActivity {
       static_cast<int>(StyleRow::Hyphenation) - static_cast<int>(StyleRow::ReadingGuideLineStyle);
   enum class FontLoadState : uint8_t { Idle, Preloading, Ready };
   enum class ExitDestination : uint8_t { Previous, Home };
+  enum class ExitPrompt : uint8_t { None, Waiting, Accepted, TooLarge };
 
   // --- UiTabListActivity contract ---
   int listCount() const override;
@@ -62,13 +75,17 @@ class TextSettingsActivity final : public UiTabListActivity {
   void activateIndex(int index) override;
   void onTabAction(int index) override;
   void stepTab(int direction) override { switchTab(direction); }
+  void drawChrome() override;
+  void drawFooter() override;
   bool handleButtons() override;
   bool handleCustomInput() override;
 
   void applyFamily(int listIndex);
   void applySize(int listIndex);
-  bool preloadFont(const SdCardFontFileInfo& file, const char* familyName);
+  SdCardFontCache::Result preloadFont(const SdCardFontFamilyInfo& family, const SdCardFontFileInfo& file);
   void exitAfterFinalFont(ExitDestination destination);
+  void finishFinalFont(bool accepted);
+  void showPreloadFailure(SdCardFontCache::Result result);
   void completeExit();
   const SdCardFontFileInfo* fontFileForFamily(int listIndex, uint8_t pointSize) const;
 #ifdef ENABLE_CHINESE_VERSION
@@ -88,8 +105,6 @@ class TextSettingsActivity final : public UiTabListActivity {
   int styleRowCount() const;
   // Button-hint label for Confirm at the current ring position.
   const char* confirmLabelText() const;
-  // True when the focused list row is a setting the preview cannot reflect.
-  bool focusedRowHasNoPreview() const;
   void switchTab(int direction = 1);
 
   // Row storage for the active tab: rowItems_ (label/actionValue) is
@@ -106,6 +121,16 @@ class TextSettingsActivity final : public UiTabListActivity {
     std::string name;
     bool isBuiltin;
     uint8_t settingIndex;
+    // 显示用标签（可为空 = 直接用 name）。和 name 分开是必须的：name 要留给
+    // SETTINGS.sdFontFamilyName 的匹配，往里塞标记会让选中项匹配不上，还可能把标记
+    // 一起存进设置，下次开机就加载不到那个字体了。放在最后是为了让既有的
+    // {name, isBuiltin, settingIndex} 聚合初始化继续有效。
+    // / Display-only label (empty = use `name`). Keeping it separate is required: `name`
+    // is matched against SETTINGS.sdFontFamilyName, so a marker in it would break the
+    // current-selection match and could be persisted, making the font unloadable on the
+    // next boot. Last member so the existing {name, isBuiltin, settingIndex} aggregate
+    // initialisers keep working.
+    std::string label;
   };
 
   struct SizeEntry {
@@ -130,8 +155,6 @@ class TextSettingsActivity final : public UiTabListActivity {
 
   ThemeMetrics metrics_ = {};
   int afterHeader = 0;
-  int bottomReserved = 0;
-  int usableHeight = 0;
   int previewHeight = 0;
   std::atomic<FontLoadState> fontLoadState_{FontLoadState::Idle};
   std::atomic<size_t> preloadCompleted_{0};
@@ -142,4 +165,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   unsigned lastPreloadPercent_ = 101;
   ExitDestination exitDestination_ = ExitDestination::Previous;
   bool exitInProgress_ = false;
+  ExitPrompt exitPrompt_ = ExitPrompt::None;
+  bool exitPromptWaitForBackRelease_ = false;
+  unsigned long noticeStartedAt_ = 0;
 };

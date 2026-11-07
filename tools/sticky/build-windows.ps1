@@ -3,11 +3,15 @@
 # Why this is more than `pio run`:
 #  * ESP-IDF/SCons break on source paths past 260 chars, so the tree is
 #    mirrored to a short path under %USERPROFILE%\.platformio and built there.
-#  * CI uses the pioarduino fork (6.1.19), not stock PlatformIO; it is installed
-#    into a private venv next to the mirror.
-#  * pioarduino on Windows defers middleware Object() calls, so the NimBLE compat
-#    rewrite in scripts/patch_ble_keyboard_host.py cannot swap the source; the
-#    same rewrite is applied to the mirror's (build-only) SDK copy instead.
+#  * Builds use the pioarduino fork, not stock PlatformIO, installed into a
+#    private venv next to the mirror. CI pins 6.2.0, but on Windows that version
+#    fails before compiling ("No module named 'SCons.Tool.FortranCommon'"), so
+#    this script stays on 6.1.19, which builds the same platform.
+#  * The PlatformIO workspace is the mirror's own .pio: scripts/patch_sdfat.py
+#    refuses an SdFat outside <project>/.pio/libdeps.
+#  * Upstream's pinned NimBLE now keeps the BleKeyboardHost passkey callback, and
+#    scripts/patch_ble_keyboard_host.py fails if it is missing, so the mirror's
+#    SDK copy is no longer rewritten here.
 #
 # Usage (from anywhere):
 #   powershell -ExecutionPolicy Bypass -File tools\sticky\build-windows.ps1 [-Env sticky-gh_release] [-Upload] [-Port COM5]
@@ -44,24 +48,16 @@ if (-not (Test-Path "$venv\Scripts\python.exe")) {
   if (-not (Test-Path "$venv\Scripts\python.exe")) {
     throw "need Python 3.11 for the build venv: install it (py -3.11) or install uv"
   }
-  & "$venv\Scripts\python.exe" -m pip install -q "pioarduino==6.1.19"
 }
+# Outside the creation branch so an existing venv gets this pin too.
+$ErrorActionPreference = "Continue"
+& "$venv\Scripts\python.exe" -m pip install -q "pioarduino==6.1.19" 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
+if ($LASTEXITCODE -ne 0) { throw "could not install pioarduino 6.1.19 into the build venv" }
 
 robocopy $repo $mirror /MIR /XD .git .pio build /NFL /NDL /NJH /NJS /NP | Out-Null
 
-$patch = @'
-import re, sys, pathlib
-root = pathlib.Path(sys.argv[1])
-src = (root / "scripts/patch_ble_keyboard_host.py").read_text(encoding="utf-8")
-method = re.search(r'METHOD = """(.*?)"""', src, re.S).group(1).encode().decode("unicode_escape")
-p = root / "freeink-sdk/libs/network/BleKeyboardHost/src/BleKeyboardHost.cpp"
-s = p.read_text(encoding="utf-8")
-if s.count(method) == 1:
-    p.write_text(s.replace(method, "", 1), encoding="utf-8")
-'@
-$patch | & "$venv\Scripts\python.exe" - $mirror
-
-$env:PLATFORMIO_WORKSPACE_DIR = $ws
+$env:PLATFORMIO_WORKSPACE_DIR = Join-Path $mirror ".pio"
 Push-Location $mirror
 try {
   $pioArgs = @("run", "-e", $Env)
@@ -70,4 +66,4 @@ try {
   & "$venv\Scripts\python.exe" -m platformio @pioArgs
   if ($LASTEXITCODE -ne 0) { throw "pio exited with $LASTEXITCODE" }
 } finally { Pop-Location }
-Write-Host "Firmware: $ws\build\$Env\firmware.bin"
+Write-Host "Firmware: $mirror\.pio\build\$Env\firmware.bin"

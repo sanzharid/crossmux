@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 
+#include "components/themes/BaseTheme.h"
+
 class GfxRenderer;
 class TextBlock;
 
@@ -20,6 +22,9 @@ struct PreviewKey {
   uint8_t alignment = 0xFF;
   uint8_t extraParagraphSpacing = 0;  // 0=off, 1..5=0.5x/0.75x/1x/1.25x/1.5x
   uint8_t firstLineIndent = 0;
+  uint8_t paragraphIndentSpaces = 3;
+  int8_t characterSpacing = 0;
+  uint8_t wordSpacingPercent = 100;
   bool focusReading = false;
   bool hyphenation = false;
   bool operator==(const PreviewKey&) const = default;
@@ -35,8 +40,9 @@ struct PreviewLayout {
   ~PreviewLayout();
 };
 
-// Draws the sample-text pane via the reader engine, reusing layout across redraws
-void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, int top,
-                   int height, const char* familyName, const char* sizeName);
+// Draws the sample-text pane via the reader engine, reusing layout across redraws.
+// The caption is borrowed for this draw; only the sample layout is cached.
+void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, Rect bounds,
+                   const char* caption);
 
 }  // namespace textsettings

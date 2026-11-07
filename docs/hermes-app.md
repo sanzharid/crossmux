@@ -23,6 +23,11 @@ and its tools, so treat the key like a password.
 
 ## 2. Configure the app (Apps → Hermes → Setup)
 
+To paste the URLs and keys from a phone instead, open **File Transfer** on the
+device, browse to the address it shows and open **Hermes**. Saved keys are
+never shown, and they are sent unencrypted, so prefer your own Wi-Fi over the
+device's open hotspot.
+
 | Setting | Default | Notes |
 |---|---|---|
 | Hermes URL | — | Base URL such as `http://<hermes-host>:8642`; `/v1/...` is appended. A full endpoint URL is used as-is. |

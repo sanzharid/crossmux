@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hermes - CrossMux</title>
+    <style>
+      .hermes-form label { display: block; margin: 12px 0 4px; color: var(--label-color); font-size: 0.9em; }
+      /* 16px stops iOS from zooming the page when a field gets focus. */
+      .hermes-form input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+      }
+      .hermes-form .save-btn { width: 100%; }
+      #status { padding: 10px; border-radius: 6px; margin: 16px 0; display: none; }
+      #status.ok { background: #d4edda; color: #155724; display: block; }
+      #status.err { background: #f8d7da; color: #721c24; display: block; }
+      .warn { background: #fff3cd; color: #664d03; padding: 10px; border-radius: 6px; }
+      .hint { color: var(--label-color); font-size: 0.85em; }
+      [hidden] { display: none; }
+    </style>
+  <link rel="stylesheet" href="/assets/web.css" />
+  <link rel="icon" type="image/svg+xml" href="/assets/crosspoint-icon.svg" />
+  </head>
+  <body class="web-ui">
+    <!--#include file="../shared/Header.zh-CN.html.inc" -->
+<main class="page-content">
+
+    <p class="warn" id="apWarning" hidden>
+      设备热点是开放网络，附近的人可能读取通过它发送的密钥。如有可能，请先让设备和手机连接到你自己的 Wi-Fi。
+    </p>
+
+    <div id="status" role="status"></div>
+
+    <form id="form" class="hermes-form" autocomplete="off">
+      <div class="card">
+        <h2>聊天</h2>
+        <label for="chatUrl">Hermes 地址</label>
+        <input id="chatUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.10:8642" />
+        <label for="chatKey">API 密钥</label>
+        <input id="chatKey" type="password" autocapitalize="off" spellcheck="false" autocomplete="new-password" />
+        <p class="hint" id="chatKeyHint"></p>
+      </div>
+
+      <div class="card">
+        <h2>语音（可选）</h2>
+        <label for="sttUrl">语音转文字地址</label>
+        <input id="sttUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.10:8000/v1/audio/transcriptions" />
+        <label for="sttKey">语音转文字密钥</label>
+        <input id="sttKey" type="password" autocapitalize="off" spellcheck="false" autocomplete="new-password" />
+        <p class="hint" id="sttKeyHint"></p>
+      </div>
+
+      <button id="save" class="save-btn" type="submit">保存</button>
+      <p class="hint">已保存的密钥不会在此显示。密钥以未加密方式发送，请仅在你信任的网络上使用。</p>
+    </form>
+
+    </main>
+<!--#include file="../shared/Footer.zh-CN.html.inc" -->
+    <script>
+      const el = (id) => document.getElementById(id);
+
+      function showStatus(text, ok) {
+        const status = el('status');
+        status.textContent = text;
+        status.className = ok ? 'ok' : 'err';
+      }
+
+      function showConfig(config) {
+        el('chatUrl').value = config.chatUrl;
+        el('sttUrl').value = config.sttUrl;
+        el('chatKey').value = '';
+        el('sttKey').value = '';
+        el('chatKeyHint').textContent = config.hasChatKey ? '已保存密钥。留空则保持不变。' : '尚未保存密钥。';
+        el('sttKeyHint').textContent = config.hasSttKey ? '已保存密钥。留空则保持不变。' : '尚未保存密钥。';
+        el('apWarning').hidden = !config.apMode;
+      }
+
+      async function load() {
+        const res = await fetch('/api/hermes');
+        if (!res.ok) throw new Error(await res.text());
+        showConfig(await res.json());
+      }
+
+      el('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const body = { chatUrl: el('chatUrl').value, sttUrl: el('sttUrl').value };
+        // 密钥留空表示保留已保存的密钥，因此不包含在请求中。
+        if (el('chatKey').value) body.chatKey = el('chatKey').value;
+        if (el('sttKey').value) body.sttKey = el('sttKey').value;
+
+        el('save').disabled = true;
+        try {
+          const res = await fetch('/api/hermes', { method: 'POST', body: JSON.stringify(body) });
+          if (!res.ok) throw new Error(await res.text());
+          showConfig(await res.json());
+          showStatus('已保存。在设备上打开 Hermes 即可使用。', true);
+        } catch (error) {
+          showStatus(error.message, false);
+        } finally {
+          el('save').disabled = false;
+        }
+      });
+
+      load().catch((error) => showStatus('无法加载设置：' + error.message, false));
+    </script>
+  </body>
+</html>

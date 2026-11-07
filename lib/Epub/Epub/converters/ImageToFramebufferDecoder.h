@@ -1,4 +1,5 @@
 #pragma once
+#include <CancelCheck.h>
 #include <HalStorage.h>
 
 #include <cstdint>
@@ -15,7 +16,10 @@ struct ImageDimensions {
 enum class DecodeOutput : uint8_t {
   FrameBufferAndCache,
   CacheOnly,
+  NativeGrayscale16,  // Gray8 samples directly to a borrowed native frame; no pixel cache.
 };
+
+enum class ImageRenderError : uint8_t { None, OutOfMemory, Failed, Cancelled };
 
 struct RenderConfig {
   int x, y;
@@ -33,6 +37,9 @@ struct RenderConfig {
   bool bilinearScaling = false;
   std::string cachePath;  // If non-empty, decoder will write pixel cache to this path
   DecodeOutput output = DecodeOutput::FrameBufferAndCache;
+  // Optional, caller-owned result for this synchronous decode.
+  ImageRenderError* error = nullptr;
+  CancelCheck cancellation;
 };
 
 class ImageToFramebufferDecoder {

@@ -41,18 +41,16 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
   style.textAlignDefined = true;  // honor the user's choice; RTL auto-detected from text
 
   ParsedText parsed(SETTINGS.extraParagraphSpacing, SETTINGS.firstLineIndent, SETTINGS.hyphenationEnabled != 0,
-                    SETTINGS.focusReadingEnabled != 0, style);
+                    SETTINGS.focusReadingEnabled != 0, style, false, SETTINGS.paragraphIndentSpaces);
 
   // Feed one space-separated word at a time; addWord handles NFC/CJK/RTL/focus splitting
   const char* text = I18N.get(StrId::STR_FONT_PREVIEW_TEXT);
   std::string word;
   word.reserve(strlen(text));
-  bool firstWord = true;
   for (const char* p = text;; p++) {
     if (*p == ' ' || *p == '\0') {
       if (!word.empty()) {
-        parsed.addWord(word, firstWord ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
-        firstWord = false;
+        parsed.addWord(word, EpdFontFamily::REGULAR);
         word.clear();
       }
       if (*p == '\0') break;
@@ -61,30 +59,32 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
     }
   }
 
-  if (!parsed.layoutAndExtractLines(renderer, fontId, static_cast<uint16_t>(textWidth),
-                                    [&layout, maxLines](std::unique_ptr<TextBlock> line, uint32_t) {
-                                      if (layout.lines.size() < maxLines) layout.lines.push_back(std::move(line));
-                                      return true;
-                                    })) {
+  if (!parsed.layoutAndExtractLines(
+          renderer, fontId, static_cast<uint16_t>(textWidth),
+          [&layout, maxLines](std::unique_ptr<TextBlock> line, uint32_t) {
+            if (layout.lines.size() < maxLines) layout.lines.push_back(std::move(line));
+            return true;
+          },
+          true, SETTINGS.getCharacterSpacing(), SETTINGS.wordSpacing)) {
     layout.lines.clear();
   }
 }
 
 }  // namespace
 
-void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, int top,
-                   int height, const char* familyName, const char* sizeName) {
-  const int left = previewPadding;
-  const int width = renderer.getScreenWidth() - (previewPadding * 2);
+void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, Rect bounds,
+                   const char* caption) {
+  const int top = bounds.y;
+  const int height = bounds.height;
+  const int left = bounds.x + previewPadding;
+  const int width = bounds.width - (previewPadding * 2);
   if (width <= 0 || height <= 0) return;
 
   const int labelH = renderer.getTextHeight(UI_10_FONT_ID);
   const int labelReserved = labelH + labelGap + previewPadding;
 
-  char labelBuf[128];
-  snprintf(labelBuf, sizeof(labelBuf), "%s \"%s, %s\"", tr(STR_PREVIEW), familyName, sizeName);
   const int labelY = top + height - previewPadding - labelH;
-  renderer.drawText(UI_10_FONT_ID, left, labelY, labelBuf);
+  renderer.drawText(UI_10_FONT_ID, left, labelY, caption);
 
   const int fontId = SETTINGS.getReaderFontId();
   if (fontId == 0) return;
@@ -113,8 +113,8 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // geometry changed; else reuse the cache. The prewarm inputs are (fontId, constant
   // sample text, styleMask<-focusReading), all of which are key fields, so a matching
   // key means an identical prewarm call. This relies on nothing else evicting the SD
-  // glyph cache while this activity is up — true today: the only evictor is
-  // FontCacheManager::PrewarmScope, used solely by the reader/dictionary activities.
+  // glyph cache while this activity is up: shared UI scans clear only built-in
+  // compressed glyphs; the reader/dictionary scope owns SD cache eviction.
   const PreviewKey key{.fontId = fontId,
                        .fontPointSize = SETTINGS.fontPointSize,
                        .screenMargin = SETTINGS.screenMargin,
@@ -124,11 +124,14 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .alignment = SETTINGS.paragraphAlignment,
                        .extraParagraphSpacing = SETTINGS.extraParagraphSpacing,
                        .firstLineIndent = SETTINGS.firstLineIndent,
+                       .paragraphIndentSpaces = SETTINGS.paragraphIndentSpaces,
+                       .characterSpacing = SETTINGS.getCharacterSpacing(),
+                       .wordSpacingPercent = SETTINGS.wordSpacing,
                        .focusReading = SETTINGS.focusReadingEnabled != 0,
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
   if (key != layout.key) {
     if (auto* fcm = renderer.getFontCacheManager()) {
-      fcm->prewarmCache(fontId, I18N.get(StrId::STR_FONT_PREVIEW_TEXT), 0x03);
+      fcm->prewarmCache(fontId, I18N.get(StrId::STR_FONT_PREVIEW_TEXT), SETTINGS.focusReadingEnabled ? 0x03 : 0x01);
     }
     relayout(layout, renderer, fontId, textWidth, static_cast<size_t>(maxLines));
     layout.key = key;

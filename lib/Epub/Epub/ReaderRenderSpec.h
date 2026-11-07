@@ -22,7 +22,14 @@ struct ReaderRenderSpec {
   // paragraphs keep their indent even when extra paragraph spacing is
   // enabled.
   uint8_t firstLineIndent = FirstLineIndent::Auto;
+  uint8_t paragraphIndentSpaces = 3;
+  int8_t characterSpacing = 0;
+  uint8_t wordSpacingPercent = 100;
   uint8_t paragraphAlignment = 0;
+  // Vertical bottom-align: redistributes each non-final page's text lines so
+  // the last line reaches the content bottom with even spacing. Keyed into the
+  // section cache so a toggle change rebuilds cached pages.
+  bool verticalBottomAlign = false;
   uint16_t viewportWidth = 0;
   uint16_t viewportHeight = 0;
   bool hyphenationEnabled = false;
@@ -30,4 +37,46 @@ struct ReaderRenderSpec {
   uint8_t imageRendering = 0;
   bool focusReadingEnabled = false;
   bool collectTouchLinks = false;
+
+  bool operator==(const ReaderRenderSpec& other) const {
+    return fontId == other.fontId && lineCompression == other.lineCompression &&
+           extraParagraphSpacing == other.extraParagraphSpacing && firstLineIndent == other.firstLineIndent &&
+           paragraphIndentSpaces == other.paragraphIndentSpaces && characterSpacing == other.characterSpacing &&
+           wordSpacingPercent == other.wordSpacingPercent && paragraphAlignment == other.paragraphAlignment &&
+           verticalBottomAlign == other.verticalBottomAlign && viewportWidth == other.viewportWidth &&
+           viewportHeight == other.viewportHeight && hyphenationEnabled == other.hyphenationEnabled &&
+           embeddedStyle == other.embeddedStyle && imageRendering == other.imageRendering &&
+           focusReadingEnabled == other.focusReadingEnabled && collectTouchLinks == other.collectTouchLinks;
+  }
 };
+
+// Stable signature for clipping anchors. Page-local word ordinals are valid
+// only for the exact layout that produced them.
+inline uint32_t readerRenderSpecSignature(const ReaderRenderSpec& spec) {
+  uint32_t signature = 2166136261U;
+  const auto mix = [&signature](const uint32_t value) {
+    signature ^= value;
+    signature *= 16777619U;
+  };
+  // Bump when the same spec values lay out differently, so old clipping word ranges stop matching.
+  constexpr uint32_t LAYOUT_SIGNATURE_VERSION = 1;
+  mix(LAYOUT_SIGNATURE_VERSION);
+  mix(static_cast<uint32_t>(spec.fontId));
+  mix(static_cast<uint32_t>(spec.lineCompression * 1000.0f));
+  mix(spec.extraParagraphSpacing);
+  mix(spec.firstLineIndent);
+  mix(spec.paragraphIndentSpaces);
+  mix(static_cast<uint8_t>(spec.characterSpacing));
+  mix(spec.wordSpacingPercent);
+  mix(spec.paragraphAlignment);
+  mix(spec.viewportWidth);
+  mix(spec.viewportHeight);
+  mix(spec.hyphenationEnabled);
+  mix(spec.embeddedStyle);
+  mix(spec.imageRendering);
+  mix(spec.focusReadingEnabled);
+  mix(spec.collectTouchLinks);
+  // Preserve disabled signatures; the high bit also stays distinct from reserved 0/1.
+  if (spec.verticalBottomAlign) signature ^= 0x80000000u;
+  return signature == 0 ? 1 : signature;
+}
