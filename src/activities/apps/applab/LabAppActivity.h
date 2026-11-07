@@ -57,9 +57,7 @@ class LabAppActivity final : public UiListActivity, private crossstore::Host {
   static void canvasAction(const freeink::ui::ActionEvent& event, void* user);
 
   // UiListActivity
-  int listCount() const override {
-    return static_cast<int>(canvasMode_ && canvas_ ? canvas_->controlCount : count_);
-  }
+  int listCount() const override { return static_cast<int>(canvasMode_ && canvas_ ? canvas_->controlCount : count_); }
   const char* headerTitle() const override { return heading_; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

@@ -4,7 +4,8 @@
 // host in LabAppActivity / AppLabCheck: keep the two in step.
 namespace applab {
 
-inline constexpr char kSystemInstruction[] = R"PROMPT(You write small apps for the Seeed reTerminal Sticky, an e-ink device with a touch screen, an OK/AI button and two page buttons. Apps are Lua 5.4 programs run in a strict sandbox. Reply with JSON only: {"name": short app name (1-3 words, English), "main_lua": the complete program}.
+inline constexpr char kSystemInstruction[] =
+    R"PROMPT(You write small apps for the Seeed reTerminal Sticky, an e-ink device with a touch screen, an OK/AI button and two page buttons. Apps are Lua 5.4 programs run in a strict sandbox. Reply with JSON only: {"name": short app name (1-3 words, English), "main_lua": the complete program}.
 
 # Program shape
 main.lua returns a table of callbacks:

@@ -6,6 +6,7 @@
 #include <esp_heap_caps.h>
 
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -94,8 +95,7 @@ class HeadlessHost final : public crossstore::Host {
       reject("drew without calling app.canvas() after app.clear()");
       return false;
     }
-    const bool interactive =
-        command.kind == crossstore::DrawKind::Button || command.kind == crossstore::DrawKind::Hit;
+    const bool interactive = command.kind == crossstore::DrawKind::Button || command.kind == crossstore::DrawKind::Hit;
     if (interactive && (command.x < 0 || command.y < 0 || command.x + command.width > width_ ||
                         command.y + command.height > height_)) {
       char detail[160];
@@ -147,13 +147,13 @@ class Checker {
 
   std::vector<std::string> run(const std::string& lua) {
     if (!host_.allocate()) return {"the device ran out of memory while checking the app"};
-    if (!runtime_.load(lua.data(), lua.size(), kVmBytes)) {
-      add("loading", runtime_.error());
-      return problems_;
-    }
-    if (!event("on_start")) return problems_;
+    // Runtime::load compiles the program and runs on_start, as on the device.
+    host_.clearRejection();
+    if (!report("start", runtime_.load(lua.data(), lua.size(), kVmBytes))) return problems_;
     event("on_resize");
-    if (!host_.drewSomething()) problems_.emplace_back("on_start drew nothing: no canvas drawing and no rows");
+    if (!host_.drewSomething()) {
+      problems_.emplace_back("during start: on_start drew nothing, no canvas drawing and no rows");
+    }
     for (int i = 0; i < 3; ++i) {
       host_.advance(kTickMs);
       event("on_tick");
@@ -179,17 +179,21 @@ class Checker {
   bool event(const char* name, const int index = 0, const char* text = "", const int x = -1, const int y = -1) {
     host_.clearRejection();
     host_.advance(1);
-    const bool ok = runtime_.event(name, index, text, x, y);
+    return report(name, runtime_.event(name, index, text, x, y));
+  }
+
+  // Records a failed step. A rejected draw raises a generic Lua error, so the
+  // host's reason is put first.
+  bool report(const char* during, const bool ok) {
     if (!ok) {
-      // A rejected draw raises a generic Lua error; the host knows why.
       if (host_.rejection().empty()) {
-        add(name, runtime_.error());
+        add(during, runtime_.error());
       } else {
-        add(name, (host_.rejection() + " (" + runtime_.error() + ")").c_str());
+        add(during, (host_.rejection() + " (" + runtime_.error() + ")").c_str());
       }
       return false;
     }
-    if (!host_.rejection().empty()) add(name, host_.rejection().c_str());
+    if (!host_.rejection().empty()) add(during, host_.rejection().c_str());
     return true;
   }
 
@@ -197,10 +201,7 @@ class Checker {
     if (problems_.size() >= kMaxProblems) return;
     char line[256];
     std::snprintf(line, sizeof(line), "during %s: %s", during, what);
-    for (const auto& existing : problems_) {
-      if (existing == line) return;
-    }
-    problems_.emplace_back(line);
+    if (std::find(problems_.begin(), problems_.end(), line) == problems_.end()) problems_.emplace_back(line);
   }
 
   HeadlessHost host_;

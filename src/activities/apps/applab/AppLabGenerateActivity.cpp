@@ -249,8 +249,7 @@ void AppLabGenerateActivity::loop() {
     const uint32_t seconds = (millis() - phaseStartedMs_) / 1000;
     if (seconds != lastSecond_) {
       lastSecond_ = seconds;
-      setStatus(formatted(fixes_ == 0 ? tr(STR_APPLAB_STATUS_ASKING) : tr(STR_APPLAB_STATUS_FIXING), seconds),
-                detail_);
+      setStatus(formatted(fixes_ == 0 ? tr(STR_APPLAB_STATUS_ASKING) : tr(STR_APPLAB_STATUS_FIXING), seconds), detail_);
     }
   }
   UiListActivity::loop();

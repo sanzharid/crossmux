@@ -76,28 +76,28 @@ return {
 TEST(AppLabRuntime, SyntaxErrorIsReported) {
   const auto problems = check("return { on_start = function( end }");
   ASSERT_FALSE(problems.empty());
-  EXPECT_TRUE(mentions(problems, "during loading")) << joined(problems);
+  EXPECT_TRUE(mentions(problems, "during start")) << joined(problems);
 }
 
 TEST(AppLabRuntime, RuntimeErrorIsReported) {
   const auto problems = check("return { on_start = function() local t = nil; t.x = 1 end }");
   ASSERT_FALSE(problems.empty());
-  EXPECT_TRUE(mentions(problems, "during on_start")) << joined(problems);
+  EXPECT_TRUE(mentions(problems, "during start")) << joined(problems);
 }
 
 TEST(AppLabRuntime, RemovedLibrariesAreUnavailable) {
-  for (const char* call : {"os.time()", "io.write('x')", "pcall(print)", "string.find('a', 'a')", "load('x=1')",
-                           "require('x')"}) {
+  for (const char* call :
+       {"os.time()", "io.write('x')", "pcall(print)", "string.find('a', 'a')", "load('x=1')", "require('x')"}) {
     const auto problems =
         check(std::string("return { on_start = function() app.clear(); app.row('a', 'b'); ") + call + " end }");
-    EXPECT_TRUE(mentions(problems, "during on_start")) << call << "\n" << joined(problems);
+    EXPECT_TRUE(mentions(problems, "during start")) << call << "\n" << joined(problems);
   }
 }
 
 TEST(AppLabRuntime, InfiniteLoopHitsTheInstructionBudget) {
   const auto problems = check("return { on_start = function() app.clear(); app.row('a', 'b'); while true do end end }");
   ASSERT_FALSE(problems.empty());
-  EXPECT_TRUE(mentions(problems, "during on_start")) << joined(problems);
+  EXPECT_TRUE(mentions(problems, "during start")) << joined(problems);
 }
 
 TEST(AppLabRuntime, OverlappingControlsAreReported) {

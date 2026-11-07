@@ -41,8 +41,8 @@ void AppLabActivity::reload() {
     RenderLock lock(*this);
     apps_ = applab::listApps();
     applab::readPendingPrompt(pendingPrompt_);
-    pendingLabel_ = pendingPrompt_.size() > kPreviewChars ? pendingPrompt_.substr(0, kPreviewChars) + "..."
-                                                          : pendingPrompt_;
+    pendingLabel_ =
+        pendingPrompt_.size() > kPreviewChars ? pendingPrompt_.substr(0, kPreviewChars) + "..." : pendingPrompt_;
     rows_.clear();
     rows_.push_back({RowKind::New, 0});
     if (!pendingPrompt_.empty()) rows_.push_back({RowKind::FromPhone, 0});

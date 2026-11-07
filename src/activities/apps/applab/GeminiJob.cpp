@@ -81,8 +81,8 @@ void runRequest(GeminiJob& job) {
 void geminiTask(void* param) {
   auto* job = static_cast<GeminiJob*>(param);
   runRequest(*job);
-  LOG_INF("APPLAB", "Gemini request done: http=%d err=%u bytes=%u", job->httpStatus,
-          static_cast<unsigned>(job->error), static_cast<unsigned>(job->reply.size()));
+  LOG_INF("APPLAB", "Gemini request done: http=%d err=%u bytes=%u", job->httpStatus, static_cast<unsigned>(job->error),
+          static_cast<unsigned>(job->reply.size()));
   job->state = job->error == GeminiJob::Error::None ? GeminiJob::State::Done : GeminiJob::State::Failed;
   job->release();
   vTaskDelete(nullptr);

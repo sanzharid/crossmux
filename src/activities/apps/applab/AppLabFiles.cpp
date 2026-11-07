@@ -129,8 +129,8 @@ bool writeData(const std::string& id, const char* key, const char* value, const 
 
 bool readPendingPrompt(std::string& prompt) {
   prompt.clear();
-  return Storage.exists(kPendingPath) &&
-         Storage.readFileToString("APPLAB", kPendingPath, kMaxPromptBytes, prompt) && !prompt.empty();
+  return Storage.exists(kPendingPath) && Storage.readFileToString("APPLAB", kPendingPath, kMaxPromptBytes, prompt) &&
+         !prompt.empty();
 }
 
 bool writePendingPrompt(const std::string& prompt) {
@@ -148,11 +148,10 @@ void clearPendingPrompt() {
 
 bool systemCall(const char* command, crossstore::ServiceReply& reply) {
   if (std::strcmp(command, "device.time") == 0) {
-    struct tm now {};
+    struct tm now{};
     if (!halClock.hasValidTime() || !halClock.localTime(now)) return false;
     std::snprintf(reply.text, sizeof(reply.text), "%02d:%02d", now.tm_hour, now.tm_min);
-    std::snprintf(reply.extra, sizeof(reply.extra), "%04d-%02d-%02d", now.tm_year + 1900, now.tm_mon + 1,
-                  now.tm_mday);
+    std::snprintf(reply.extra, sizeof(reply.extra), "%04d-%02d-%02d", now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
     reply.a = now.tm_wday;
     reply.b = now.tm_sec;
     reply.c = static_cast<int64_t>(time(nullptr));

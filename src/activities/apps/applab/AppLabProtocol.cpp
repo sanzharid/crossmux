@@ -11,9 +11,7 @@ namespace {
 constexpr size_t kMaxIdLength = 31;
 constexpr size_t kMaxModelLength = 64;
 
-bool isIdChar(const char c) {
-  return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
-}
+bool isIdChar(const char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }
 
 }  // namespace
 
@@ -118,6 +116,7 @@ ParseResult parseApp(const std::string& text, std::string& name, std::string& lu
   const size_t end = start == std::string::npos ? std::string::npos : text.find("```", start);
   if (end == std::string::npos) return ParseResult::NoApp;
   lua = text.substr(start + 1, end - start - 1);
+  while (!lua.empty() && std::isspace(static_cast<unsigned char>(lua.back()))) lua.pop_back();
   return lua.empty() ? ParseResult::NoApp : ParseResult::Ok;
 }
 

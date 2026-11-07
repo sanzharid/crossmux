@@ -53,6 +53,8 @@ void LabAppActivity::onEnter() {
     return;
   }
   title(info.name.c_str());
+  // Without BOARD_HAS_PSRAM (as in static analysis) the helper is constant true.
+  // cppcheck-suppress knownConditionTrueFalse
   if (!memory::psramHasHeadroom(kVmBytes, kVmBytes, 0)) {
     showError(tr(STR_HERMES_ERR_MEMORY));
     return;

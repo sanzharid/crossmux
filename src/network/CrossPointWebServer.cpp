@@ -60,18 +60,18 @@
 #include "activities/apps/hermes/HermesStore.h"
 #include "activities/apps/hermes/HermesWebUpdate.h"
 namespace web_zh_cn {
+#include "html/zh-CN/AppLabPageHtml.generated.h"
 #include "html/zh-CN/FilesPageHtml.generated.h"
 #include "html/zh-CN/FontsPageHtml.generated.h"
-#include "html/zh-CN/AppLabPageHtml.generated.h"
 #include "html/zh-CN/HermesPageHtml.generated.h"
 #include "html/zh-CN/HomePageHtml.generated.h"
 #include "html/zh-CN/PluginsPageHtml.generated.h"
 #include "html/zh-CN/SettingsPageHtml.generated.h"
 }  // namespace web_zh_cn
 namespace web_en {
+#include "html/en/AppLabPageHtml.generated.h"
 #include "html/en/FilesPageHtml.generated.h"
 #include "html/en/FontsPageHtml.generated.h"
-#include "html/en/AppLabPageHtml.generated.h"
 #include "html/en/HermesPageHtml.generated.h"
 #include "html/en/HomePageHtml.generated.h"
 #include "html/en/SettingsPageHtml.generated.h"
