@@ -3,6 +3,8 @@
 #include <BoardConfig.h>
 #include <HalGPIO.h>
 
+#include <array>
+
 #include "util/HomeButtonInput.h"
 #include "util/RemoteButtonInput.h"
 

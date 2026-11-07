@@ -149,6 +149,8 @@ def main():
         "FREEINK_CAP_HAPTIC",
         "FREEINK_CAP_WARMLIGHT",
         "FREEINK_DEVICE_PICCO",
+        "FREEINK_DEVICE_STICKY",
+        "HERMES_HAS_MIC",
     )
     for values in product((False, True), repeat=len(capability_names)):
         capabilities = dict(zip(capability_names, values))

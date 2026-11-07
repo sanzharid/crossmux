@@ -719,6 +719,7 @@ struct ActivityManager {
   void goToMainTab(MainTab tab) { destination=tab; }
   void requestUpdate() { ++updates; }
   void goToStandby() { assert(false); }
+  static MainTab homeMainTab() { return MainTab::Recent; }  // this fork's Home screen setting, at its default
   bool handleMainTabInput();
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
 };
@@ -874,6 +875,7 @@ struct Activity {
   bool keepsBluetoothAlive() const { return false; }
   bool handleHomeGesture() const { return false; }
   bool usesMainTabBar() const { return tabs; }
+  bool blocksGlobalShortcuts() const { return false; }  // this fork's lock screen: never locked here
   MainTab mainTab() const { return tab; }
   MainTabLayout mainTabLayout() const { return {Rect{0,700,480,56},Rect{0,0,480,28},Rect{0,34,480,650}}; }
   bool mainTabBackReturnsToTabs() const { return true; }
@@ -890,6 +892,9 @@ std::unique_ptr<Activity> page(const char* theme) {
 struct FrontlightPanelActivity : Activity {
   FrontlightPanelActivity(int,MappedInputManager&) { home=false;name="FrontlightPanel"; }
 };
+struct LockScreenActivity : Activity {
+  LockScreenActivity(int,MappedInputManager&) { home=false;name="LockScreen"; }
+};
 template<class T,class... Args> auto makeUniqueNoThrow(Args&&... args) {
   return std::make_unique<T>(std::forward<Args>(args)...);
 }
@@ -905,6 +910,9 @@ struct ActivityManager {
   MainTabFocus mainTabFocus=MainTabFocus::Tabs;
   unsigned screenVisit=0;
   bool keepsBluetoothAlive() const { return false; }
+  bool lockRequested_=false;  // this fork's lock screen; never requested in these flows
+  bool isLocked() const { return false; }
+  static MainTab homeMainTab() { return MainTab::Recent; }
   bool mainTabEntryReleasePending=false;
   bool mainTabTouchFocusPending=false;
   int renderer=0,renderTaskHandle=0,standbyCalls=0;

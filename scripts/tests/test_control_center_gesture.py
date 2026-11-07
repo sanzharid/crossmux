@@ -38,6 +38,9 @@ struct Activity {
   bool isHomeActivity() { return false; }
   bool handleHomeGesture() { return false; }
   bool usesMainTabBar() { return mainTabs; }
+  // This fork's lock screen: unlocked, and on no particular tab.
+  bool blocksGlobalShortcuts() { return false; }
+  MainTab mainTab() { return MainTab::None; }
   MainTabLayout mainTabLayout() { return {Rect{}, status, Rect{}}; }
   void loop() { ++loops; }
 };
@@ -53,6 +56,7 @@ struct Input {
   bool wasMenuGesture() { return topSwipe; }
 };
 struct FrontlightPanelActivity { FrontlightPanelActivity(int, Input&) {} };
+struct LockScreenActivity { LockScreenActivity(int, Input&) {} };
 bool failAllocation = false;
 template<class T, class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
   return failAllocation ? nullptr : std::make_unique<T>(std::forward<Args>(args)...);
@@ -64,6 +68,10 @@ struct ActivityManager {
   Activity* currentActivity;
   Input mappedInput;
   int renderer = 0, renderTaskHandle = 0, pushes = 0;
+  bool lockRequested_ = false;  // this fork's lock screen; never requested here
+  bool isLocked() { return false; }
+  static MainTab homeMainTab() { return MainTab::Recent; }
+  void pushActivity(std::unique_ptr<LockScreenActivity>) { assert(false); }
   bool handleMainTabInput() { return false; }
   bool handleHomeStandbyInput() { return false; }
   void resetHomeStandbyInput() {}
