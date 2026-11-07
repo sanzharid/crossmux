@@ -5,8 +5,8 @@
 #include <Memory.h>
 #include <esp_heap_caps.h>
 
-#include <cstdio>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <memory>
