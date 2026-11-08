@@ -341,6 +341,12 @@ void silentRestartToReaderAndPreloadChineseFont(const uint8_t pointSize) {
 
 void silentRestartToSettings() {
   if (deepSleepInProgress) return;
+#if FREEINK_CAP_TOUCH
+  // Like silentRestart(): touch boards end the Wi-Fi session in place and stay
+  // in Settings instead of rebooting (the reboot also showed this fork's lock
+  // screen on the Sticky).
+  if (finishWifiSessionWithoutRestart()) return;
+#endif
   silentRebootTarget = static_cast<uint32_t>(SilentRebootTarget::Settings);
   silentRebootFontPointSize = 0;
   silentRebootPayload = Frontlight.isOn() ? SILENT_REBOOT_LIGHT_ON : 0;
@@ -1277,8 +1283,12 @@ void setup() {
   // Lock before the routed screen is painted: a pending Replace gets the lock
   // pushed right after its onEnter (ActivityManager), and running one loop now
   // does it before the Silent-resume paint below.
-  if ((ScreenLock::wasLocked() || (SETTINGS.lockOnWake && ScreenLock::hasPin())) && !recoveryFirmwareMode &&
-      !HalSystem::isRebootFromPanic()) {
+  // A silent reboot is the firmware's own restart while the user was using the
+  // device (heap defrag after Wi-Fi, OTA, settings): it resumes where it was and
+  // only locks if the device was already locked. Wake and power-on still lock.
+  const bool lockOnThisBoot =
+      ScreenLock::wasLocked() || (SETTINGS.lockOnWake && ScreenLock::hasPin() && !isSilentReboot);
+  if (lockOnThisBoot && !recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {
     activityManager.requestLock();
     activityManager.loop();
   }
